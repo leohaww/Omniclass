@@ -1,0 +1,795 @@
+{% extends 'base.html' %}
+{% block title %}Profil — {{ user.full_name }} — OmniClass{% endblock %}
+{% block page_title %}Profil Saya{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Profile Hero ─────────────────────────────── */
+.profile-hero {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  margin-bottom: 0;
+  box-shadow: 0 8px 32px rgba(79,70,229,.15);
+}
+
+.profile-banner {
+  height: 180px;
+  background: linear-gradient(135deg,
+    {% if user.role == 'director' %}#1e1b4b 0%, #4f46e5 50%, #7c3aed 100%
+    {% elif user.role == 'lecturer' %}#064e3b 0%, #059669 50%, #0d9488 100%
+    {% else %}#78350f 0%, #d97706 50%, #f59e0b 100%{% endif %});
+  position: relative;
+}
+
+.profile-banner::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.profile-banner-actions {
+  position: absolute; top: 12px; right: 12px;
+}
+
+.profile-body {
+  background: #fff;
+  padding: 0 28px 24px;
+  position: relative;
+}
+
+/* ── Avatar Upload ────────────────────────────── */
+.avatar-wrap {
+  position: relative;
+  width: 110px; height: 110px;
+  margin-top: -55px;
+  flex-shrink: 0;
+}
+
+.avatar-img {
+  width: 110px; height: 110px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid #fff;
+  box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  background: #f1f5f9;
+  display: block;
+}
+
+.avatar-upload-btn {
+  position: absolute;
+  bottom: 4px; right: 4px;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all .2s;
+  color: #fff; font-size: 13px;
+  box-shadow: 0 2px 8px rgba(79,70,229,.4);
+}
+.avatar-upload-btn:hover {
+  background: var(--primary-dark);
+  transform: scale(1.1);
+}
+
+.avatar-upload-overlay {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .2s;
+  cursor: pointer;
+  flex-direction: column; gap: 4px;
+  color: #fff; font-size: 11px; font-weight: 600;
+  border: 3px solid rgba(255,255,255,.3);
+}
+.avatar-wrap:hover .avatar-upload-overlay { opacity: 1; }
+
+#avatarInput { display: none; }
+
+/* ── Role Badge ──────────────────────────────── */
+.profile-role-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: .3px;
+}
+.badge-director { background: rgba(79,70,229,.12); color: #4f46e5; }
+.badge-lecturer { background: rgba(5,150,105,.12);  color: #059669; }
+.badge-student  { background: rgba(217,119,6,.12);  color: #d97706; }
+
+/* ── Stats Row ───────────────────────────────── */
+.profile-stats {
+  display: flex; gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.pstat {
+  flex: 1; min-width: 90px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 10px;
+  text-align: center;
+  transition: all .2s;
+}
+.pstat:hover { background: var(--bg-body); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.06); }
+.pstat-value { font-family: 'Plus Jakarta Sans',sans-serif; font-size: 22px; font-weight: 700; color: var(--text-primary); line-height: 1; }
+.pstat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-weight: 500; }
+
+/* ── Form Card ───────────────────────────────── */
+.form-section {
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+
+.form-section-header {
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex; align-items: center; gap: 10px;
+}
+
+.section-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+
+.form-section-body { padding: 22px; }
+
+/* ── Upload Preview ──────────────────────────── */
+.upload-preview-ring {
+  position: relative;
+  width: 110px; height: 110px;
+  margin: 0 auto 12px;
+}
+
+.upload-preview-ring::after {
+  content: '';
+  position: absolute; inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(var(--primary) var(--pct,0%), #e2e8f0 0%);
+  z-index: -1;
+  transition: --pct .3s;
+}
+
+/* ── Password strength ───────────────────────── */
+.strength-bar {
+  height: 4px; border-radius: 2px;
+  background: #e2e8f0;
+  overflow: hidden; margin-top: 6px;
+}
+.strength-fill {
+  height: 100%; border-radius: 2px;
+  transition: width .3s, background .3s;
+  width: 0%;
+}
+
+/* ── Activity Feed ───────────────────────────── */
+.activity-item {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.activity-item:last-child { border-bottom: none; }
+.activity-dot {
+  width: 34px; height: 34px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 767px) {
+  .profile-banner { height: 130px; }
+  .avatar-wrap { width: 90px; height: 90px; margin-top: -45px; }
+  .avatar-img { width: 90px; height: 90px; }
+  .profile-body { padding: 0 16px 20px; }
+  .pstat-value { font-size: 18px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  <!-- ── LEFT COLUMN ────────────────────────────────────────── -->
+  <div class="col-lg-4">
+
+    <!-- Profile Card -->
+    <div class="profile-hero mb-4">
+      <div class="profile-banner">
+        <!-- Banner decoration -->
+        <div class="profile-banner-actions">
+          <label for="bannerInput" class="btn btn-sm"
+                 style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.3);backdrop-filter:blur(6px)">
+            <i class="bi bi-image me-1"></i>Ubah Banner
+          </label>
+          <input type="file" id="bannerInput" accept="image/*" class="d-none">
+        </div>
+      </div>
+
+      <div class="profile-body">
+        <div class="d-flex align-items-end gap-3 mb-3">
+          <!-- Avatar Upload -->
+          <div class="avatar-wrap">
+            <img id="avatarPreview"
+                 src="{{ user.avatar_url }}"
+                 class="avatar-img"
+                 alt="{{ user.full_name }}"
+                 onerror="this.src='/static/img/default_avatar.svg'">
+            <div class="avatar-upload-overlay" onclick="document.getElementById('avatarInput').click()">
+              <i class="bi bi-camera-fill fs-5"></i>
+              <span>Ubah Foto</span>
+            </div>
+            <div class="avatar-upload-btn" onclick="document.getElementById('avatarInput').click()" title="Ubah foto profil">
+              <i class="bi bi-camera-fill"></i>
+            </div>
+          </div>
+
+          <!-- Name & role -->
+          <div class="pb-1 flex-grow-1 min-w-0">
+            <h5 class="fw-700 mb-1 text-truncate">{{ user.full_name }}</h5>
+            <span class="profile-role-badge badge-{{ user.role }}">
+              {% if user.role == 'director' %}<i class="bi bi-building-fill"></i> Direktur
+              {% elif user.role == 'lecturer' %}<i class="bi bi-person-workspace"></i> Dosen
+              {% else %}<i class="bi bi-mortarboard-fill"></i> Mahasiswa{% endif %}
+            </span>
+          </div>
+        </div>
+
+        <!-- Meta info -->
+        <div class="d-flex flex-column gap-2 mb-4">
+          <div class="d-flex align-items-center gap-2 text-muted small">
+            <i class="bi bi-envelope-fill text-primary" style="width:16px"></i>
+            <span class="text-truncate">{{ user.email }}</span>
+          </div>
+          <div class="d-flex align-items-center gap-2 text-muted small">
+            <i class="bi bi-telephone-fill text-success" style="width:16px"></i>
+            <span>{{ user.phone or 'Belum diisi' }}</span>
+          </div>
+          <div class="d-flex align-items-center gap-2 text-muted small">
+            <i class="bi bi-card-text text-warning" style="width:16px"></i>
+            <span>{{ user.nip_nim or 'Belum diisi' }}</span>
+          </div>
+          <div class="d-flex align-items-center gap-2 text-muted small">
+            <i class="bi bi-building text-purple" style="width:16px"></i>
+            <span>{{ user.institution.name }}</span>
+          </div>
+          <div class="d-flex align-items-center gap-2 text-muted small">
+            <i class="bi bi-clock-history text-info" style="width:16px"></i>
+            <span>Login: {{ user.last_login.strftime('%d %b %Y, %H:%M') if user.last_login else 'Pertama kali' }}</span>
+          </div>
+        </div>
+
+        <!-- Stats per role -->
+        <div class="profile-stats">
+          {% if user.role == 'director' %}
+            <div class="pstat">
+              <div class="pstat-value text-primary">{{ stats.total_students }}</div>
+              <div class="pstat-label">Mahasiswa</div>
+            </div>
+            <div class="pstat">
+              <div class="pstat-value text-success">{{ stats.total_lecturers }}</div>
+              <div class="pstat-label">Dosen</div>
+            </div>
+            <div class="pstat">
+              <div class="pstat-value text-warning">{{ stats.total_courses }}</div>
+              <div class="pstat-label">Mata Kuliah</div>
+            </div>
+          {% elif user.role == 'lecturer' %}
+            <div class="pstat">
+              <div class="pstat-value text-primary">{{ stats.total_courses }}</div>
+              <div class="pstat-label">Kelas</div>
+            </div>
+            <div class="pstat">
+              <div class="pstat-value text-success">{{ stats.total_students }}</div>
+              <div class="pstat-label">Mahasiswa</div>
+            </div>
+            <div class="pstat">
+              <div class="pstat-value text-warning">{{ stats.total_assignments }}</div>
+              <div class="pstat-label">Tugas</div>
+            </div>
+          {% else %}
+            <div class="pstat">
+              <div class="pstat-value text-primary">{{ stats.att_rate }}%</div>
+              <div class="pstat-label">Kehadiran</div>
+            </div>
+            <div class="pstat">
+              <div class="pstat-value text-purple">{{ stats.gpa }}</div>
+              <div class="pstat-label">IPK</div>
+            </div>
+            <div class="pstat">
+              <div class="pstat-value text-success">{{ stats.courses }}</div>
+              <div class="pstat-label">MK</div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Account Security Card -->
+    <div class="form-section">
+      <div class="form-section-header">
+        <div class="section-icon bg-danger-soft">
+          <i class="bi bi-shield-lock-fill text-danger"></i>
+        </div>
+        <div>
+          <div class="fw-600 small">Keamanan Akun</div>
+          <div class="text-muted" style="font-size:.7rem">Status & verifikasi</div>
+        </div>
+      </div>
+      <div class="form-section-body p-3">
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+          <span class="small text-muted">Status Akun</span>
+          <span class="badge {% if user.is_active %}bg-success-soft text-success{% else %}bg-danger-soft text-danger{% endif %}">
+            <i class="bi bi-{% if user.is_active %}check-circle{% else %}x-circle{% endif %}-fill me-1"></i>
+            {{ 'Aktif' if user.is_active else 'Nonaktif' }}
+          </span>
+        </div>
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+          <span class="small text-muted">Email Terverifikasi</span>
+          <span class="badge {% if user.is_verified %}bg-success-soft text-success{% else %}bg-warning-soft text-warning{% endif %}">
+            {{ '✓ Verified' if user.is_verified else '⚠ Pending' }}
+          </span>
+        </div>
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+          <span class="small text-muted">IP Terakhir</span>
+          <code class="small">{{ user.last_ip or '—' }}</code>
+        </div>
+        <div class="d-flex justify-content-between align-items-center py-2">
+          <span class="small text-muted">Bergabung</span>
+          <span class="small">{{ user.created_at.strftime('%d %b %Y') }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT COLUMN ───────────────────────────────────────── -->
+  <div class="col-lg-8">
+
+    <!-- Photo Upload Form (hidden, submits via JS) -->
+    <form id="avatarForm" method="POST" enctype="multipart/form-data"
+          action="{{ url_for('auth.profile') }}" class="d-none">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" id="avatarInput" name="avatar" accept="image/jpeg,image/png,image/gif,image/webp">
+    </form>
+
+    <!-- ── Tab Navigation ── -->
+    <ul class="nav nav-pills mb-4 gap-2 flex-wrap" id="profileTabs">
+      <li class="nav-item">
+        <a class="nav-link active d-flex align-items-center gap-2"
+           data-bs-toggle="pill" href="#tabInfo">
+          <i class="bi bi-person-fill"></i>Informasi Pribadi
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link d-flex align-items-center gap-2"
+           data-bs-toggle="pill" href="#tabPassword">
+          <i class="bi bi-key-fill"></i>Ubah Password
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link d-flex align-items-center gap-2"
+           data-bs-toggle="pill" href="#tabActivity">
+          <i class="bi bi-clock-history"></i>Aktivitas
+        </a>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+
+      <!-- ── TAB 1: Info Pribadi ── -->
+      <div class="tab-pane fade show active" id="tabInfo">
+        <div class="form-section">
+          <div class="form-section-header">
+            <div class="section-icon bg-primary-soft">
+              <i class="bi bi-person-vcard-fill text-primary"></i>
+            </div>
+            <div>
+              <div class="fw-600 small">Informasi Profil</div>
+              <div class="text-muted" style="font-size:.7rem">Perbarui data diri Anda</div>
+            </div>
+          </div>
+          <div class="form-section-body">
+            <form method="POST" action="{{ url_for('auth.profile') }}" enctype="multipart/form-data">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="form_type" value="info">
+
+              <div class="row g-3">
+                <div class="col-12">
+                  <label class="form-label fw-500">Foto Profil</label>
+                  <div class="d-flex align-items-center gap-3">
+                    <div style="position:relative;display:inline-block">
+                      <img id="inlinePreview"
+                           src="{{ user.avatar_url }}"
+                           class="rounded-circle border"
+                           width="72" height="72"
+                           style="object-fit:cover;border-width:3px!important;border-color:#e2e8f0!important"
+                           onerror="this.src='/static/img/default_avatar.svg'">
+                      <div style="position:absolute;bottom:0;right:0;width:22px;height:22px;
+                                  background:var(--primary);border-radius:50%;border:2px solid #fff;
+                                  display:flex;align-items:center;justify-content:center;cursor:pointer"
+                           onclick="triggerAvatarUpload()">
+                        <i class="bi bi-pencil-fill text-white" style="font-size:.55rem"></i>
+                      </div>
+                    </div>
+                    <div>
+                      <button type="button" class="btn btn-outline-primary btn-sm"
+                              onclick="triggerAvatarUpload()">
+                        <i class="bi bi-upload me-1"></i>Upload Foto Baru
+                      </button>
+                      <div class="text-muted mt-1" style="font-size:.7rem">
+                        JPG, PNG, GIF, WEBP · Maks 5MB
+                      </div>
+                    </div>
+                  </div>
+                  <input type="file" name="avatar" id="avatarInput2" accept="image/*" class="d-none"
+                         onchange="previewInline(this)">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-500">Nama Lengkap <span class="text-danger">*</span></label>
+                  <input type="text" name="full_name" class="form-control"
+                         value="{{ user.full_name }}" required
+                         placeholder="Nama lengkap sesuai identitas">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label fw-500">Email</label>
+                  <input type="email" class="form-control bg-light"
+                         value="{{ user.email }}" disabled>
+                  <div class="form-text text-muted">Email tidak dapat diubah</div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label fw-500">Username</label>
+                  <div class="input-icon-group">
+                    <i class="bi bi-at input-icon text-muted"></i>
+                    <input type="text" class="form-control input-with-icon bg-light"
+                           value="{{ user.username }}" disabled>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label fw-500">No. Telepon</label>
+                  <div class="input-icon-group">
+                    <i class="bi bi-telephone-fill input-icon text-success"></i>
+                    <input type="text" name="phone" class="form-control input-with-icon"
+                           value="{{ user.phone or '' }}"
+                           placeholder="08xx-xxxx-xxxx">
+                  </div>
+                </div>
+
+                {% if user.role in ['lecturer','student'] %}
+                <div class="col-md-6">
+                  <label class="form-label fw-500">
+                    {{ 'NIP' if user.role == 'lecturer' else 'NIM' }}
+                  </label>
+                  <input type="text" class="form-control bg-light"
+                         value="{{ user.nip_nim or '—' }}" disabled>
+                  <div class="form-text text-muted">Hanya dapat diubah oleh admin</div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label fw-500">Institusi</label>
+                  <input type="text" class="form-control bg-light"
+                         value="{{ user.institution.name }}" disabled>
+                </div>
+                {% endif %}
+
+                <div class="col-12 pt-2">
+                  <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary px-4">
+                      <i class="bi bi-check2-circle me-2"></i>Simpan Perubahan
+                    </button>
+                    <button type="reset" class="btn btn-outline-secondary">
+                      <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── TAB 2: Ubah Password ── -->
+      <div class="tab-pane fade" id="tabPassword">
+        <div class="form-section">
+          <div class="form-section-header">
+            <div class="section-icon bg-warning-soft">
+              <i class="bi bi-key-fill text-warning"></i>
+            </div>
+            <div>
+              <div class="fw-600 small">Ubah Password</div>
+              <div class="text-muted" style="font-size:.7rem">Gunakan password yang kuat</div>
+            </div>
+          </div>
+          <div class="form-section-body">
+            <form method="POST" action="{{ url_for('auth.profile') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="form_type" value="password">
+
+              <div class="row g-3">
+                <!-- Password strength tips -->
+                <div class="col-12">
+                  <div class="alert alert-info py-2 small d-flex gap-2">
+                    <i class="bi bi-shield-check-fill flex-shrink-0 mt-1"></i>
+                    <div>
+                      Password kuat: min. <strong>8 karakter</strong>, kombinasi
+                      huruf besar, huruf kecil, angka, dan simbol.
+                    </div>
+                  </div>
+                </div>
+
+                <div class="col-12">
+                  <label class="form-label fw-500">Password Saat Ini <span class="text-danger">*</span></label>
+                  <div class="input-icon-group">
+                    <i class="bi bi-lock-fill input-icon"></i>
+                    <input type="password" name="old_password" id="oldPass"
+                           class="form-control input-with-icon"
+                           placeholder="Masukkan password saat ini" required>
+                    <button type="button" class="password-toggle"
+                            onclick="togglePwd('oldPass','oldEye')">
+                      <i class="bi bi-eye-slash" id="oldEye"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-500">Password Baru <span class="text-danger">*</span></label>
+                  <div class="input-icon-group">
+                    <i class="bi bi-lock-fill input-icon"></i>
+                    <input type="password" name="new_password" id="newPass"
+                           class="form-control input-with-icon"
+                           placeholder="Password baru"
+                           oninput="checkStrength(this.value)" required>
+                    <button type="button" class="password-toggle"
+                            onclick="togglePwd('newPass','newEye')">
+                      <i class="bi bi-eye-slash" id="newEye"></i>
+                    </button>
+                  </div>
+                  <div class="strength-bar mt-2">
+                    <div class="strength-fill" id="strengthFill"></div>
+                  </div>
+                  <div class="d-flex justify-content-between mt-1">
+                    <small id="strengthLabel" class="text-muted">Masukkan password baru</small>
+                    <small id="strengthScore" class="text-muted"></small>
+                  </div>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-500">Konfirmasi Password <span class="text-danger">*</span></label>
+                  <div class="input-icon-group">
+                    <i class="bi bi-lock-fill input-icon"></i>
+                    <input type="password" name="confirm_password" id="confPass"
+                           class="form-control input-with-icon"
+                           placeholder="Ulangi password baru"
+                           oninput="checkMatch()" required>
+                    <button type="button" class="password-toggle"
+                            onclick="togglePwd('confPass','confEye')">
+                      <i class="bi bi-eye-slash" id="confEye"></i>
+                    </button>
+                  </div>
+                  <div id="matchMsg" class="mt-1" style="font-size:.75rem"></div>
+                </div>
+
+                <!-- Strength checklist -->
+                <div class="col-12">
+                  <div class="row g-2" id="pwChecklist" style="font-size:.78rem">
+                    <div class="col-6"><span id="ck-len"  class="text-muted"><i class="bi bi-circle me-1"></i>Min. 8 karakter</span></div>
+                    <div class="col-6"><span id="ck-upper" class="text-muted"><i class="bi bi-circle me-1"></i>Huruf besar</span></div>
+                    <div class="col-6"><span id="ck-num"  class="text-muted"><i class="bi bi-circle me-1"></i>Angka</span></div>
+                    <div class="col-6"><span id="ck-sym"  class="text-muted"><i class="bi bi-circle me-1"></i>Simbol (!@#$)</span></div>
+                  </div>
+                </div>
+
+                <div class="col-12 pt-2">
+                  <button type="submit" class="btn btn-warning fw-600 px-4">
+                    <i class="bi bi-shield-check me-2"></i>Perbarui Password
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── TAB 3: Aktivitas ── -->
+      <div class="tab-pane fade" id="tabActivity">
+        <div class="form-section">
+          <div class="form-section-header">
+            <div class="section-icon bg-info-soft">
+              <i class="bi bi-clock-history text-info"></i>
+            </div>
+            <div>
+              <div class="fw-600 small">Riwayat Aktivitas</div>
+              <div class="text-muted" style="font-size:.7rem">10 aktivitas terakhir Anda</div>
+            </div>
+          </div>
+          <div class="form-section-body p-0">
+            {% if recent_logs %}
+            {% set act_icons = {
+              'login':'box-arrow-in-right','logout':'box-arrow-left',
+              'session_started':'camera-video-fill','assignment_submitted':'send-fill',
+              'grade_updated':'star-fill','permit_submitted':'file-earmark-check-fill',
+              'user_created':'person-plus-fill','announcement_created':'megaphone-fill',
+              'profile_updated':'pencil-fill'
+            } %}
+            {% set act_colors = {
+              'login':'success','logout':'secondary','session_started':'primary',
+              'assignment_submitted':'info','grade_updated':'warning',
+              'permit_submitted':'warning','user_created':'success',
+              'announcement_created':'primary','profile_updated':'success'
+            } %}
+            <div class="px-3">
+              {% for log in recent_logs %}
+              {% set icon  = act_icons.get(log.action, 'activity') %}
+              {% set color = act_colors.get(log.action, 'secondary') %}
+              <div class="activity-item">
+                <div class="activity-dot bg-{{ color }}-soft text-{{ color }}">
+                  <i class="bi bi-{{ icon }}"></i>
+                </div>
+                <div class="flex-grow-1">
+                  <div class="fw-500 small">{{ log.action | replace('_',' ') | title }}</div>
+                  <div class="text-muted" style="font-size:.7rem">
+                    {{ log.message or '—' }}
+                    {% if log.ip_address %}
+                    · <code style="font-size:.65rem">{{ log.ip_address }}</code>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="text-muted flex-shrink-0" style="font-size:.7rem">
+                  {{ log.created_at | time_ago }}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-5 text-muted">
+              <i class="bi bi-clock display-4 d-block mb-3 opacity-25"></i>
+              <p class="small">Belum ada riwayat aktivitas</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-content -->
+  </div><!-- /col -->
+</div>
+
+<!-- ── Upload Progress Toast ── -->
+<div id="uploadToast" class="position-fixed bottom-0 end-0 m-3" style="z-index:9999;display:none">
+  <div class="card shadow-lg border-0" style="min-width:260px;border-radius:12px;overflow:hidden">
+    <div class="card-body p-3">
+      <div class="d-flex align-items-center gap-3">
+        <div class="spinner-border spinner-border-sm text-primary" id="uploadSpinner"></div>
+        <i class="bi bi-check-circle-fill text-success fs-5 d-none" id="uploadDone"></i>
+        <div>
+          <div class="fw-600 small" id="uploadMsg">Mengunggah foto...</div>
+          <div class="text-muted" style="font-size:.7rem" id="uploadSub">Harap tunggu sebentar</div>
+        </div>
+      </div>
+      <div class="progress mt-2" style="height:3px">
+        <div class="progress-bar progress-bar-animated bg-primary" id="uploadBar" style="width:0%"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* ── Avatar preview helper ────────────────────── */
+function triggerAvatarUpload() {
+  document.getElementById('avatarInput2').click();
+}
+
+function previewInline(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Ukuran file terlalu besar (maks 5 MB).', 'danger'); return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const src = e.target.result;
+    document.getElementById('inlinePreview').src  = src;
+    document.getElementById('avatarPreview').src  = src;
+    showToast('Foto siap diunggah. Klik "Simpan Perubahan".', 'info');
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ── Show/hide password ──────────────────────── */
+function togglePwd(inputId, iconId) {
+  const inp  = document.getElementById(inputId);
+  const icon = document.getElementById(iconId);
+  if (inp.type === 'password') {
+    inp.type  = 'text';
+    icon.className = 'bi bi-eye';
+  } else {
+    inp.type  = 'password';
+    icon.className = 'bi bi-eye-slash';
+  }
+}
+
+/* ── Password strength ───────────────────────── */
+function checkStrength(val) {
+  const checks = {
+    len:   val.length >= 8,
+    upper: /[A-Z]/.test(val),
+    num:   /[0-9]/.test(val),
+    sym:   /[^A-Za-z0-9]/.test(val)
+  };
+  const score = Object.values(checks).filter(Boolean).length;
+  const fill  = document.getElementById('strengthFill');
+  const label = document.getElementById('strengthLabel');
+  const sc    = document.getElementById('strengthScore');
+
+  const levels = ['','Sangat Lemah','Lemah','Cukup','Kuat','Sangat Kuat'];
+  const colors = ['','#ef4444','#f97316','#eab308','#22c55e','#16a34a'];
+  const pcts   = [0, 20, 40, 60, 80, 100];
+
+  fill.style.width      = pcts[score] + '%';
+  fill.style.background = colors[score];
+  label.textContent     = levels[score] || 'Masukkan password baru';
+  label.style.color     = colors[score] || '';
+  sc.textContent        = score > 0 ? `${score}/4` : '';
+
+  Object.entries(checks).forEach(([key, ok]) => {
+    const el = document.getElementById('ck-' + key);
+    if (!el) return;
+    el.className = ok ? 'text-success' : 'text-muted';
+    el.querySelector('i').className = ok ? 'bi bi-check-circle-fill me-1' : 'bi bi-circle me-1';
+  });
+
+  checkMatch();
+}
+
+function checkMatch() {
+  const p1  = document.getElementById('newPass')?.value  || '';
+  const p2  = document.getElementById('confPass')?.value || '';
+  const msg = document.getElementById('matchMsg');
+  if (!p2) { msg.innerHTML = ''; return; }
+  if (p1 === p2) {
+    msg.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i><span class="text-success">Password cocok</span>';
+  } else {
+    msg.innerHTML = '<i class="bi bi-x-circle-fill text-danger me-1"></i><span class="text-danger">Password tidak cocok</span>';
+  }
+}
+
+/* ── Upload toast ────────────────────────────── */
+function showUploadToast(msg, sub, done=false) {
+  const t = document.getElementById('uploadToast');
+  const sp = document.getElementById('uploadSpinner');
+  const dk = document.getElementById('uploadDone');
+  const bar = document.getElementById('uploadBar');
+  document.getElementById('uploadMsg').textContent = msg;
+  document.getElementById('uploadSub').textContent = sub;
+  t.style.display = 'block';
+  if (done) {
+    sp.classList.add('d-none');
+    dk.classList.remove('d-none');
+    bar.style.width = '100%';
+    bar.classList.remove('progress-bar-animated');
+    bar.classList.add('bg-success');
+    setTimeout(() => { t.style.display='none'; sp.classList.remove('d-none'); dk.classList.add('d-none'); bar.style.width='0%'; bar.classList.add('progress-bar-animated','bg-primary'); bar.classList.remove('bg-success'); }, 2500);
+  } else {
+    sp.classList.remove('d-none');
+    dk.classList.add('d-none');
+    let pct = 0;
+    const iv = setInterval(() => { pct = Math.min(pct+10,85); bar.style.width=pct+'%'; if(pct>=85) clearInterval(iv); }, 120);
+  }
+}
+
+/* ── Submit form with file ──────────────────── */
+document.querySelector('form[action*="profile"]')?.addEventListener('submit', function(e) {
+  const file = document.getElementById('avatarInput2')?.files[0];
+  if (file) showUploadToast('Mengunggah foto profil...','Harap tunggu sebentar');
+});
+</script>
+{% endblock %}

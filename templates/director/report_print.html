@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>{{ title }} — OmniClass</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 32px; color: #1e293b; }
+  .print-toolbar { margin-bottom: 20px; }
+  .print-toolbar button {
+    background: linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; border:none;
+    padding: 10px 20px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 13.5px;
+  }
+  .header { display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 3px solid #4f46e5; padding-bottom: 14px; margin-bottom: 18px; }
+  .header h1 { font-size: 20px; margin: 0 0 4px; color:#1e1b4b; }
+  .header .meta { font-size: 12px; color:#64748b; }
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  th { background:#4f46e5; color:#fff; text-align:left; padding:8px 10px; }
+  td { padding:7px 10px; border-bottom: 1px solid #e2e8f0; }
+  tr:nth-child(even) td { background:#f8fafc; }
+  .footer { margin-top: 24px; font-size: 11px; color:#94a3b8; text-align:right; }
+  @media print {
+    .print-toolbar { display: none; }
+    body { margin: 10mm; }
+  }
+</style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <button onclick="window.print()">🖨️ Cetak / Simpan sebagai PDF</button>
+  </div>
+  <div class="header">
+    <div>
+      <h1>{{ title }}</h1>
+      <div class="meta">OmniClass — Sistem Informasi Akademik Terpadu</div>
+    </div>
+    <div class="meta">
+      Diekspor oleh: <strong>{{ director.full_name }}</strong><br>
+      {{ generated_at.strftime('%d %B %Y, %H:%M') }} UTC
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>{% for c in columns %}<th>{{ c }}</th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>{% for c in columns %}<td>{{ row.get(c, '—') }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="footer">Total baris: {{ rows|length }} — Dokumen ini dibuat otomatis oleh sistem OmniClass.</div>
+  <script>window.addEventListener('load', () => setTimeout(() => window.print(), 400));</script>
+</body>
+</html>

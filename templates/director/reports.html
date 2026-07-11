@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+{% block title %}Laporan — OmniClass{% endblock %}
+{% block page_title %}Laporan & Ekspor{% endblock %}
+
+{% block extra_css %}
+<style>
+.report-type-btn { display:flex; align-items:center; gap:10px; }
+.report-type-btn.active-report { background:#eef2ff; color:#4f46e5; font-weight:700; border-left:3px solid #4f46e5; }
+.program-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:700; }
+.program-pill.PPL { background:rgba(79,70,229,.1); color:#4f46e5; }
+.program-pill.DM  { background:rgba(234,88,12,.1); color:#ea580c; }
+#previewTable { font-size:12.5px; }
+#previewTable th { background:#f8fafc; white-space:nowrap; position:sticky; top:0; }
+.preview-scroll { max-height:420px; overflow:auto; border:1px solid #eef2f6; border-radius:12px; }
+.spin-mini { width:16px;height:16px;border:2px solid #e2e8f0;border-top-color:#4f46e5;border-radius:50%;animation:spin .7s linear infinite;display:inline-block; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- Report Types -->
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600">Jenis Laporan</h6></div>
+      <div class="list-group list-group-flush">
+        <button class="list-group-item list-group-item-action report-type-btn active-report" data-type="attendance" onclick="selectReport('attendance',this)">
+          <i class="bi bi-calendar-check"></i>Laporan Kehadiran
+        </button>
+        <button class="list-group-item list-group-item-action report-type-btn" data-type="grades" onclick="selectReport('grades',this)">
+          <i class="bi bi-star"></i>Laporan Nilai
+        </button>
+        <button class="list-group-item list-group-item-action report-type-btn" data-type="at_risk" onclick="selectReport('at_risk',this)">
+          <i class="bi bi-exclamation-triangle"></i>Mahasiswa Berisiko
+        </button>
+        <button class="list-group-item list-group-item-action report-type-btn" data-type="summary" onclick="selectReport('summary',this)">
+          <i class="bi bi-graph-up"></i>Rekapitulasi Semester
+        </button>
+      </div>
+      <div class="card-body small text-muted border-top">
+        <i class="bi bi-info-circle me-1"></i>
+        Semua laporan diambil langsung dari data seluruh dosen (PPL &amp; DM) secara real-time.
+      </div>
+    </div>
+  </div>
+
+  <!-- Report Config -->
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600">Konfigurasi Laporan</h6></div>
+      <div class="card-body">
+        <form id="reportForm" onsubmit="return false;">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Program</label>
+              <select name="program" id="fProgram" class="form-select">
+                <option value="">Semua Program</option>
+                <option value="PPL">🖥️ PPL — Pengembangan Perangkat Lunak</option>
+                <option value="DM">📣 DM — Digital Marketing</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Mata Kuliah</label>
+              <select name="course_id" id="fCourse" class="form-select">
+                <option value="">Semua Mata Kuliah</option>
+                {% for course in courses %}
+                <option value="{{ course.id }}" data-program="{{ course.program }}">{{ course.name }} ({{ course.code }}) — {{ course.program }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Format Ekspor</label>
+              <select name="format" id="fFormat" class="form-select">
+                <option value="xlsx">📊 Excel (.xlsx)</option>
+                <option value="pdf">🖨️ Cetak / PDF</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Dari Tanggal</label>
+              <input type="date" name="date_from" id="fFrom" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Sampai Tanggal</label>
+              <input type="date" name="date_to" id="fTo" class="form-control">
+            </div>
+          </div>
+
+          <div class="report-preview mt-4 p-3 rounded border bg-light" id="previewBox">
+            <div class="text-center py-4 text-muted">
+              <i class="bi bi-file-earmark-bar-graph display-4 mb-3 d-block"></i>
+              <p class="mb-0">Klik "Preview" untuk melihat data laporan</p>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-4">
+            <button type="button" class="btn btn-outline-primary" id="btnPreview" onclick="doPreview()">
+              <i class="bi bi-eye me-2"></i>Preview
+            </button>
+            <button type="button" class="btn btn-primary" onclick="doExport()">
+              <i class="bi bi-download me-2"></i>Ekspor Sekarang
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentType = 'attendance';
+
+function selectReport(type, btn) {
+  currentType = type;
+  document.querySelectorAll('.report-type-btn').forEach(el => el.classList.remove('active-report'));
+  btn.classList.add('active-report');
+  doPreview();
+}
+
+function buildParams() {
+  const p = new URLSearchParams();
+  p.set('type', currentType);
+  p.set('program', document.getElementById('fProgram').value);
+  p.set('course_id', document.getElementById('fCourse').value);
+  p.set('date_from', document.getElementById('fFrom').value);
+  p.set('date_to', document.getElementById('fTo').value);
+  return p;
+}
+
+async function doPreview() {
+  const box = document.getElementById('previewBox');
+  box.innerHTML = '<div class="text-center py-4 text-muted"><span class="spin-mini"></span> Memuat data...</div>';
+  try {
+    const res = await fetch('{{ url_for("director.reports_preview") }}', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/x-www-form-urlencoded', 'X-CSRFToken': '{{ csrf_token() }}' },
+      body: buildParams().toString()
+    });
+    const data = await res.json();
+    if (!data.success) {
+      box.innerHTML = `<div class="alert alert-danger mb-0">${data.message}</div>`;
+      return;
+    }
+    if (!data.rows.length) {
+      box.innerHTML = '<div class="text-center py-4 text-muted"><i class="bi bi-inbox display-4 mb-3 d-block"></i>Tidak ada data untuk filter yang dipilih.</div>';
+      return;
+    }
+    let html = `<div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0 fw-700">${data.title}</h6>
+        <span class="badge bg-primary">${data.total} baris</span>
+      </div>
+      <div class="preview-scroll">
+      <table class="table table-sm table-hover mb-0" id="previewTable"><thead><tr>`;
+    data.columns.forEach(c => html += `<th>${c}</th>`);
+    html += '</tr></thead><tbody>';
+    data.rows.forEach(r => {
+      html += '<tr>';
+      data.columns.forEach(c => {
+        let v = r[c];
+        if (c === 'Program' && v) v = `<span class="program-pill ${v}">${v}</span>`;
+        html += `<td>${v ?? '—'}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    if (data.total > data.rows.length) {
+      html += `<div class="text-muted small mt-2">Menampilkan ${data.rows.length} dari ${data.total} baris. Ekspor untuk melihat semua data.</div>`;
+    }
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div class="alert alert-danger mb-0">Gagal memuat preview.</div>';
+  }
+}
+
+function doExport() {
+  const p = buildParams();
+  p.set('format', document.getElementById('fFormat').value);
+  window.open('{{ url_for("director.reports_export") }}?' + p.toString(), '_blank');
+}
+
+// Filter course dropdown by chosen program
+document.getElementById('fProgram').addEventListener('change', function() {
+  const val = this.value;
+  document.querySelectorAll('#fCourse option').forEach(opt => {
+    if (!opt.dataset.program) return; // "Semua" option
+    opt.style.display = (!val || opt.dataset.program === val) ? '' : 'none';
+  });
+  document.getElementById('fCourse').value = '';
+});
+
+document.addEventListener('DOMContentLoaded', doPreview);
+</script>
+{% endblock %}

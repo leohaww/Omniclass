@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block title %}Tambah Pengguna — OmniClass{% endblock %}
+{% block page_title %}Tambah Pengguna Baru{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">
+        <h6 class="mb-0 fw-600"><i class="bi bi-person-plus-fill me-2 text-primary"></i>Form Pengguna Baru</h6>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('director.add_user') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-500">Nama Lengkap <span class="text-danger">*</span></label>
+              <input type="text" name="full_name" class="form-control" placeholder="Nama lengkap" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500">Email <span class="text-danger">*</span></label>
+              <input type="email" name="email" class="form-control" placeholder="email@institusi.ac.id" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500">Username <span class="text-danger">*</span></label>
+              <input type="text" name="username" class="form-control" placeholder="username unik" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500">NIP / NIM</label>
+              <input type="text" name="nip_nim" class="form-control" placeholder="No. Induk">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500">Role <span class="text-danger">*</span></label>
+              <select name="role" id="roleSelect" class="form-select" required onchange="toggleProgramField()">
+                <option value="">-- Pilih Role --</option>
+                <option value="director">Direktur</option>
+                <option value="lecturer">Dosen</option>
+                <option value="student">Mahasiswa</option>
+              </select>
+            </div>
+            <div class="col-md-6 d-none" id="programFieldWrap">
+              <label class="form-label fw-500">Program / Kelas <span class="text-danger">*</span></label>
+              <select name="program" id="programSelect" class="form-select">
+                <option value="PPL">🖥️ PPL — Pengembangan Perangkat Lunak</option>
+                <option value="DM">📣 DM — Digital Marketing</option>
+              </select>
+              <div class="form-text" id="programHint">
+                Menentukan tampilan dashboard dosen (PPL atau DM) agar kedua kelas tidak tercampur.
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500">No. Telepon</label>
+              <input type="text" name="phone" class="form-control" placeholder="08xx-xxxx-xxxx">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500">Password <span class="text-danger">*</span></label>
+              <input type="password" name="password" class="form-control" placeholder="Min. 8 karakter" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500">Konfirmasi Password</label>
+              <input type="password" class="form-control" placeholder="Ulangi password">
+            </div>
+            <div class="col-12">
+              <div class="d-flex gap-2 mt-2">
+                <button type="submit" class="btn btn-primary">
+                  <i class="bi bi-check2-circle me-2"></i>Simpan Pengguna
+                </button>
+                <a href="{{ url_for('director.users') }}" class="btn btn-outline-secondary">Batal</a>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleProgramField() {
+  const role = document.getElementById('roleSelect').value;
+  const wrap = document.getElementById('programFieldWrap');
+  const hint = document.getElementById('programHint');
+  if (role === 'lecturer' || role === 'student') {
+    wrap.classList.remove('d-none');
+    hint.textContent = role === 'lecturer'
+      ? 'Menentukan tampilan dashboard dosen (PPL atau DM) agar kedua kelas tidak tercampur.'
+      : 'Menentukan kelas awal mahasiswa (PPL atau DM). Dosen tetap bisa menambahkan mahasiswa ke kelas lain.';
+  } else {
+    wrap.classList.add('d-none');
+  }
+}
+document.addEventListener('DOMContentLoaded', toggleProgramField);
+</script>
+{% endblock %}

@@ -1,0 +1,300 @@
+{% extends 'base.html' %}
+
+{% block title %}Kalender{% endblock %}
+
+{% block page_title %}Kalender{% endblock %}
+
+{% block breadcrumb %}
+  <span>Kalender</span>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .calendar-shell{
+    border-radius:18px;
+    border:1px solid rgba(226,232,240,.95);
+    background: linear-gradient(135deg, rgba(79,70,229,.08) 0%, rgba(124,58,237,.04) 40%, rgba(6,182,212,.03) 100%);
+    box-shadow: 0 18px 50px rgba(79,70,229,.10);
+    overflow:hidden;
+  }
+
+  .calendar-hero{
+    padding:20px 22px;
+    background: linear-gradient(135deg,#4f46e5 0%, #7c3aed 50%, #0ea5e9 120%);
+    color:#fff;
+    position:relative;
+  }
+  .calendar-hero::after{
+    content:'';
+    position:absolute;
+    inset:-2px;
+    background: radial-gradient(circle at 20% 10%, rgba(255,255,255,.25) 0%, transparent 55%),
+                radial-gradient(circle at 80% 30%, rgba(255,255,255,.18) 0%, transparent 55%),
+                radial-gradient(circle at 40% 120%, rgba(255,255,255,.12) 0%, transparent 55%);
+    pointer-events:none;
+  }
+  .calendar-hero-inner{ position:relative; z-index:1; }
+
+  .calendar-title{
+    font-family:'Plus Jakarta Sans',sans-serif;
+    font-weight:900;
+    letter-spacing:-.02em;
+    font-size:20px;
+    margin:0;
+  }
+  .calendar-sub{
+    margin:6px 0 0;
+    font-size:13px;
+    color: rgba(255,255,255,.82);
+  }
+
+  .calendar-controls{
+    padding:16px 18px;
+    background: rgba(255,255,255,.72);
+    backdrop-filter: blur(10px);
+  }
+
+  .calendar-card{
+    background:#fff;
+    border:1px solid rgba(226,232,240,.95);
+    border-radius:16px;
+    box-shadow: 0 10px 30px rgba(2,6,23,.06);
+    overflow:hidden;
+  }
+
+  .calendar-grid-wrap{ padding:14px; }
+
+  .dow-row{
+    display:grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap:8px;
+    padding:0 6px 10px;
+  }
+  .dow{
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:.8px;
+    text-transform:uppercase;
+    color:#64748b;
+  }
+
+  .date-grid{
+    display:grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap:8px;
+  }
+
+  .day-cell{
+    border-radius:12px;
+    border:1px solid rgba(226,232,240,.95);
+    background: linear-gradient(180deg, rgba(248,250,252,1) 0%, rgba(241,245,249,1) 100%);
+    min-height:54px;
+    padding:10px 10px;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+    cursor:pointer;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
+    position:relative;
+  }
+  .day-cell:hover{
+    transform: translateY(-2px);
+    border-color: rgba(99,102,241,.35);
+    box-shadow: 0 12px 26px rgba(79,70,229,.10);
+    background: linear-gradient(180deg, rgba(99,102,241,.08) 0%, rgba(248,250,252,1) 100%);
+  }
+
+  .day-num{
+    font-weight:900;
+    color:#0f172a;
+    font-size:13px;
+    line-height:1;
+  }
+  .day-meta{
+    margin-top:auto;
+    font-size:10.5px;
+    font-weight:700;
+    color:#94a3b8;
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+
+  .day-cell.muted{
+    opacity:.45;
+    background: #f8fafc;
+    cursor:default;
+    transform:none !important;
+    box-shadow:none !important;
+  }
+  .day-cell.today{
+    border-color: rgba(79,70,229,.5);
+    box-shadow: 0 18px 40px rgba(79,70,229,.14);
+    background: linear-gradient(180deg, rgba(79,70,229,.12) 0%, rgba(248,250,252,1) 100%);
+  }
+  .day-cell.active{
+    border-color: rgba(124,58,237,.6);
+    background: linear-gradient(180deg, rgba(124,58,237,.20) 0%, rgba(248,250,252,1) 100%);
+  }
+
+  .calendar-actions{
+    padding:14px 18px;
+    border-top:1px solid rgba(226,232,240,.95);
+    background: rgba(255,255,255,.72);
+    backdrop-filter: blur(10px);
+    display:flex;
+    gap:10px;
+    align-items:center;
+    justify-content:flex-end;
+    flex-wrap:wrap;
+  }
+
+  .calendar-actions .btn{
+    border-radius:12px;
+    padding:10px 14px;
+    font-weight:800;
+  }
+
+  .legend{
+    margin-right:auto;
+    display:flex;
+    gap:12px;
+    align-items:center;
+    color:#64748b;
+    font-size:12.5px;
+    font-weight:700;
+  }
+  .legend-item{ display:flex; align-items:center; gap:8px; }
+  .legend-swatch{
+    width:12px; height:12px;
+    border-radius:4px;
+    border:1px solid rgba(226,232,240,.95);
+  }
+  .sw-today{ background: rgba(79,70,229,.18); border-color: rgba(79,70,229,.45); }
+  .sw-active{ background: rgba(124,58,237,.22); border-color: rgba(124,58,237,.55); }
+
+  @media (max-width:991.98px){
+    .calendar-hero{ padding:18px 16px; }
+    .calendar-controls{ padding:14px 14px; }
+    .calendar-grid-wrap{ padding:12px; }
+    .day-cell{ min-height:48px; padding:8px; }
+  }
+
+  @media (max-width:575.98px){
+    .dow-row{ gap:6px; padding:0 2px 8px; }
+    .date-grid{ gap:6px; }
+    .day-cell{ border-radius:10px; min-height:46px; }
+    .legend{ width:100%; margin:0; justify-content:space-between; }
+    .calendar-actions{ justify-content:space-between; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="calendar-shell">
+  <div class="calendar-hero">
+    <div class="calendar-hero-inner d-flex align-items-start justify-content-between gap-3 flex-wrap">
+      <div>
+        <h3 class="calendar-title">📅 Tanggal / Bulan / Tahun</h3>
+        <div class="calendar-sub">Pilih tanggal untuk kebutuhan absensi, jadwal, atau navigasi cepat (UI saja).</div>
+      </div>
+      <div class="text-white-50" style="font-weight:800;font-size:12.5px">
+        <div>Mode: <span style="color:#fff">Ringkas</span></div>
+        <div id="tzLabel">Waktu lokal</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="calendar-controls">
+    <form class="row g-2 align-items-end" method="GET" action="{{ url_for('calendar_view') }}">
+      <div class="col-12 col-md-4">
+        <label class="form-label">Bulan</label>
+        <select class="form-select" name="month" onchange="this.form.submit()" aria-label="Pilih bulan">
+          {% for m in range(1,13) %}
+            {% set is_selected = (m == selected_month) %}
+            <option value="{{ m }}" {% if is_selected %}selected{% endif %}>{{ month_names[m-1] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-4">
+        <label class="form-label">Tahun</label>
+        <select class="form-select" name="year" onchange="this.form.submit()" aria-label="Pilih tahun">
+          {% for y in years %}
+            <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-4">
+        <label class="form-label">Tanggal Dipilih</label>
+        <div class="d-flex gap-2">
+          <input class="form-control" type="date" name="date" value="{{ selected_date_iso }}" onchange="this.form.submit()" aria-label="Pilih tanggal"/>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="calendar-grid-wrap">
+    <div class="calendar-card">
+      <div class="p-3">
+        <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+          <div style="font-weight:900; color:#0f172a; font-family:'Plus Jakarta Sans'">
+            {{ month_names[selected_month-1] }} {{ selected_year }}
+          </div>
+          <div style="color:#94a3b8; font-weight:800; font-size:12.5px">
+            Dipilih: <span style="color:#4f46e5">{{ selected_date_pretty }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-3 pb-3">
+        <div class="dow-row">
+          {% set dow = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'] %}
+          {% for d in dow %}<div class="dow">{{ d }}</div>{% endfor %}
+        </div>
+
+        <div class="date-grid" role="grid" aria-label="Kalender bulan">
+          {# Render 42 slot grid #}
+          {% for cell in grid_cells %}
+            {% if cell.in_month %}
+              <a class="day-cell {% if cell.is_today %}today{% endif %}{% if cell.is_active %} active{% endif %}"
+                 href="{{ url_for('calendar_view', year=cell.year, month=cell.month, date=cell.iso) }}"
+                 onclick="setActiveCell('{{ cell.iso }}');">
+                <div class="day-num">{{ cell.day }}</div>
+                <div class="day-meta">
+                  {% if cell.is_today %}<i class="bi bi-star-fill text-primary" style="font-size:11px"></i>Hari ini{% else %}&nbsp;{% endif %}
+                </div>
+              </a>
+            {% else %}
+              <div class="day-cell muted" aria-disabled="true">
+                <div class="day-num">{{ cell.day }}</div>
+                <div class="day-meta"> </div>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="calendar-actions">
+        <div class="legend">
+          <div class="legend-item"><span class="legend-swatch sw-today"></span>Hari ini</div>
+          <div class="legend-item"><span class="legend-swatch sw-active"></span>Dipilih</div>
+        </div>
+        <a class="btn btn-outline-primary" style="border-width:2px" href="{{ url_for('calendar_view') }}">↺ Ke Bulan Ini</a>
+        <a class="btn btn-primary" href="{{ url_for(request.endpoint or 'index') }}">Lanjut</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // label tz
+  document.getElementById('tzLabel') && (document.getElementById('tzLabel').textContent = 'Zone: ' + Intl.DateTimeFormat().resolvedOptions().timeZone);
+
+  function setActiveCell(iso){
+    // noop; UI highlight via server render.
+  }
+</script>
+{% endblock %}
+

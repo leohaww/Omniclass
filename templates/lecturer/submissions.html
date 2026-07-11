@@ -1,0 +1,382 @@
+{% extends 'base.html' %}
+{% block title %}Pengumpulan Tugas — OmniClass{% endblock %}
+{% block page_title %}Pengumpulan Tugas{% endblock %}
+
+{% block content %}
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="row align-items-center">
+      <div class="col">
+        <h5 class="fw-700 mb-1">{{ assignment.title }}</h5>
+        <div class="d-flex flex-wrap gap-3 text-muted small">
+          <span><i class="bi bi-book me-1"></i>{{ assignment.course.name }}</span>
+          <span><i class="bi bi-clock me-1"></i>{{ assignment.due_date.strftime('%d %b %Y %H:%M') }}</span>
+          <span><i class="bi bi-star me-1"></i>Nilai Maks: {{ assignment.max_score }}</span>
+        </div>
+      </div>
+      <div class="col-auto">
+        <div class="text-center">
+          <div class="display-6 fw-700 text-primary">{{ submissions|length }}</div>
+          <small class="text-muted">dikumpulkan</small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 fw-600">Daftar Pengumpulan</h6>
+    <div class="d-flex gap-2">
+      <select class="form-select form-select-sm" style="width:140px" id="filterStatus">
+        <option value="">Semua</option>
+        <option value="submitted">Belum Dinilai</option>
+        <option value="graded">Sudah Dinilai</option>
+        <option value="revision">Perlu Revisi</option>
+      </select>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-head">
+        <tr>
+          <th>Mahasiswa</th>
+          <th>Waktu Kumpul</th>
+          <th class="text-center">Terlambat</th>
+          <th class="text-center">Status</th>
+          <th class="text-center">Nilai</th>
+          <th>Feedback</th>
+          <th class="text-end">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sub in submissions %}
+        <tr data-status="{{ sub.status }}">
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <img src="{{ sub.student.avatar_url }}" class="rounded-circle" width="32" height="32">
+              <div>
+                <div class="fw-500 small">{{ sub.student.full_name }}</div>
+                <div class="text-muted" style="font-size:.65rem">{{ sub.student.nip_nim }}</div>
+              </div>
+            </div>
+          </td>
+          <td><small>{{ sub.submitted_at.strftime('%d/%m/%Y %H:%M') }}</small></td>
+          <td class="text-center">
+            {% if sub.is_late %}
+            <span class="badge bg-danger-soft text-danger"><i class="bi bi-clock-history me-1"></i>Terlambat</span>
+            {% else %}
+            <span class="badge bg-success-soft text-success"><i class="bi bi-check me-1"></i>Tepat</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if sub.status == 'revision' %}
+            <span class="badge bg-warning-soft text-warning"><i class="bi bi-arrow-repeat me-1"></i>Revisi ({{ sub.revision_count }}x)</span>
+            {% elif sub.status == 'graded' %}
+            <span class="badge bg-success-soft text-success"><i class="bi bi-check2-circle me-1"></i>Dinilai</span>
+            {% else %}
+            <span class="badge bg-secondary-soft text-secondary">Belum Dinilai</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            <div class="d-flex align-items-center gap-1 justify-content-center">
+              <input type="number" class="form-control form-control-sm text-center score-input"
+                     data-sub-id="{{ sub.id }}" data-assignment-id="{{ assignment.id }}"
+                     value="{{ sub.score or '' }}" min="0" max="{{ assignment.max_score }}"
+                     style="width:65px" placeholder="—">
+              <span class="text-muted small">/{{ assignment.max_score }}</span>
+            </div>
+            {% if sub.final_score is not none and sub.final_score != sub.score %}
+            <small class="text-warning">Final: {{ sub.final_score }}</small>
+            {% endif %}
+          </td>
+          <td>
+            <input type="text" class="form-control form-control-sm feedback-input"
+                   data-sub-id="{{ sub.id }}" value="{{ sub.feedback or '' }}"
+                   placeholder="Feedback singkat...">
+          </td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary detail-btn"
+                    data-aid="{{ assignment.id }}" data-sub-id="{{ sub.id }}" title="Detail Pengumpulan">
+              <i class="bi bi-eye"></i>
+            </button>
+            <button class="btn btn-sm btn-primary save-grade-btn"
+                    data-sub-id="{{ sub.id }}" data-assignment-id="{{ assignment.id }}" title="Simpan Nilai">
+              <i class="bi bi-check2"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-warning revision-btn"
+                    data-aid="{{ assignment.id }}" data-sub-id="{{ sub.id }}" data-name="{{ sub.student.full_name }}"
+                    title="Minta Revisi">
+              <i class="bi bi-arrow-repeat"></i>
+            </button>
+            {% if sub.file_url %}
+            <a href="{{ url_for('lecturer.download_submission_file', aid=assignment.id, subid=sub.id) }}" class="btn btn-sm btn-outline-secondary" title="Unduh lampiran">
+              <i class="bi bi-download"></i>
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center py-5 text-muted">Belum ada pengumpulan</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ Modal: Detail Pengumpulan ═══ -->
+<div class="modal fade" id="modalDetail" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content" style="border-radius:20px;border:none;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+      <div class="modal-header" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none">
+        <h6 class="modal-title fw-700 mb-0"><i class="bi bi-file-earmark-richtext-fill me-2"></i>Detail Pengumpulan Tugas</h6>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="detailBody" style="background:#fafbff">
+        <div class="text-center py-4 text-muted">Memuat...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Lightbox untuk perbesar foto tugas ═══ -->
+<div class="modal fade" id="lightboxModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content bg-transparent border-0">
+      <button class="btn-close btn-close-white ms-auto mb-2" data-bs-dismiss="modal"></button>
+      <img id="lightboxImg" src="" class="img-fluid rounded-4 shadow-lg mx-auto d-block" style="max-height:85vh">
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modal: Minta Revisi ═══ -->
+<div class="modal fade" id="modalRevision" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;border:none">
+      <div class="modal-header bg-warning-soft">
+        <h6 class="modal-title fw-700 mb-0 text-warning"><i class="bi bi-arrow-repeat me-2"></i>Minta Revisi Tugas</h6>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-2">Mahasiswa: <strong id="revStudentName"></strong></p>
+        <label class="form-label small fw-600">Catatan Revisi <span class="text-danger">*</span></label>
+        <textarea id="revNotes" class="form-control" rows="4" placeholder="Jelaskan bagian mana yang perlu diperbaiki..."></textarea>
+        <div id="revMsg" class="small mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+        <button class="btn btn-warning fw-600" id="btnSendRevision"><i class="bi bi-send me-2"></i>Kirim Permintaan Revisi</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF = '{{ csrf_token() }}';
+
+document.querySelectorAll('.save-grade-btn').forEach(btn => {
+  btn.addEventListener('click', async function() {
+    const subId = this.dataset.subId;
+    const asgId = this.dataset.assignmentId;
+    const score = document.querySelector(`.score-input[data-sub-id="${subId}"]`).value;
+    const feedback = document.querySelector(`.feedback-input[data-sub-id="${subId}"]`).value;
+
+    const fd = new FormData();
+    fd.append('csrf_token', CSRF);
+    fd.append('score', score);
+    fd.append('feedback', feedback);
+
+    const res = await fetch(`/lecturer/assignments/${asgId}/grade/${subId}`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if(data.success) {
+      this.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+      setTimeout(() => this.innerHTML = '<i class="bi bi-check2"></i>', 2000);
+    }
+  });
+});
+
+// Filter
+document.getElementById('filterStatus').addEventListener('change', function() {
+  const val = this.value;
+  document.querySelectorAll('tbody tr[data-status]').forEach(row => {
+    row.style.display = (!val || row.dataset.status === val) ? '' : 'none';
+  });
+});
+
+// ── Detail modal ──
+const detailModal = new bootstrap.Modal(document.getElementById('modalDetail'));
+function openLightbox(url) {
+  document.getElementById('lightboxImg').src = url;
+  new bootstrap.Modal(document.getElementById('lightboxModal')).show();
+}
+
+async function renderFileBlock(d) {
+  if (!d.file_url) return '';
+  const iconMap = { zip: 'bi-file-earmark-zip-fill text-warning', image: 'bi-file-earmark-image-fill text-info',
+                    document: 'bi-file-earmark-text-fill text-primary', other: 'bi-file-earmark-fill text-secondary' };
+  const icon = iconMap[d.file_kind] || iconMap.other;
+  const dlUrl = d.download_url || d.file_url;
+
+  if (d.file_kind === 'image') {
+    return `
+      <div class="mb-3">
+        <label class="form-label small fw-600 text-uppercase" style="letter-spacing:.4px">📎 Lampiran Foto</label>
+        <div class="rounded-4 overflow-hidden border shadow-sm position-relative" style="cursor:zoom-in" onclick="openLightbox('${d.file_url}')">
+          <img src="${d.file_url}" class="w-100" style="max-height:380px;object-fit:contain;background:#f1f5f9">
+          <div class="position-absolute bottom-0 end-0 m-2 badge bg-dark bg-opacity-75"><i class="bi bi-zoom-in me-1"></i>Klik untuk perbesar</div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <span class="text-muted small"><i class="bi ${icon} me-1"></i>${d.file_name} ${d.file_size ? `(${d.file_size})` : ''}</span>
+          <a href="${dlUrl}" class="btn btn-sm btn-outline-primary"><i class="bi bi-download me-1"></i>Unduh</a>
+        </div>
+      </div>`;
+  }
+
+  if (d.file_kind === 'zip') {
+    return `
+      <div class="mb-3">
+        <label class="form-label small fw-600 text-uppercase" style="letter-spacing:.4px">📦 Lampiran Folder ZIP</label>
+        <div class="p-3 rounded-4 border shadow-sm" style="background:linear-gradient(135deg,#fffbeb,#fef3c7)">
+          <div class="d-flex align-items-center gap-3 mb-2">
+            <i class="bi ${icon}" style="font-size:2.6rem"></i>
+            <div class="flex-grow-1">
+              <div class="fw-700">${d.file_name}</div>
+              <div class="text-muted small">${d.file_size || ''}</div>
+            </div>
+            <div class="d-flex gap-1">
+              <a href="${d.file_url}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Buka tab baru"><i class="bi bi-box-arrow-up-right"></i></a>
+              <a href="${dlUrl}" class="btn btn-sm btn-warning fw-600"><i class="bi bi-download me-1"></i>Unduh ZIP</a>
+            </div>
+          </div>
+          <div id="zipContents-${d._subId}" class="small mt-2">
+            <span class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Membaca isi folder...</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // document / other
+  return `
+    <div class="mb-3">
+      <label class="form-label small fw-600 text-uppercase" style="letter-spacing:.4px">📎 Lampiran File</label>
+      <div class="d-flex align-items-center gap-3 p-3 rounded-4 border shadow-sm bg-white">
+        <i class="bi ${icon}" style="font-size:2.6rem"></i>
+        <div class="flex-grow-1">
+          <div class="fw-700">${d.file_name}</div>
+          <div class="text-muted small">${d.file_size || ''}</div>
+        </div>
+        <a href="${d.file_url}" target="_blank" class="btn btn-sm btn-outline-secondary me-1" title="Buka tab baru"><i class="bi bi-box-arrow-up-right"></i></a>
+        <a href="${dlUrl}" class="btn btn-sm btn-primary"><i class="bi bi-download me-1"></i>Unduh</a>
+      </div>
+    </div>`;
+}
+
+document.querySelectorAll('.detail-btn').forEach(btn => {
+  btn.addEventListener('click', async function() {
+    const aid = this.dataset.aid, subId = this.dataset.subId;
+    document.getElementById('detailBody').innerHTML = '<div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Memuat detail...</div>';
+    detailModal.show();
+    try {
+      const res = await fetch(`/lecturer/assignments/${aid}/submissions/${subId}/detail`);
+      const d = await res.json();
+      d._subId = subId;
+      if (!d.success) { document.getElementById('detailBody').innerHTML = '<div class="alert alert-danger">Gagal memuat detail.</div>'; return; }
+      let statusBadge = d.status === 'revision'
+        ? `<span class="badge bg-warning-soft text-warning">Revisi ke-${d.revision_count}</span>`
+        : d.status === 'graded'
+        ? '<span class="badge bg-success-soft text-success">Sudah Dinilai</span>'
+        : '<span class="badge bg-secondary-soft text-secondary">Belum Dinilai</span>';
+
+      const fileBlock = await renderFileBlock(d);
+
+      document.getElementById('detailBody').innerHTML = `
+        <div class="d-flex align-items-center gap-3 mb-3 p-3 rounded-4" style="background:#eef2ff">
+          <img src="${d.avatar}" class="rounded-circle border border-2 border-white shadow-sm" width="52" height="52">
+          <div>
+            <div class="fw-700 fs-6">${d.student_name}</div>
+            <div class="text-muted small">${d.nim}</div>
+          </div>
+          <div class="ms-auto text-end">${statusBadge}</div>
+        </div>
+        <div class="row g-2 small mb-3">
+          <div class="col-6"><span class="text-muted">Waktu kumpul:</span> <strong>${d.submitted_at}</strong></div>
+          <div class="col-6"><span class="text-muted">Terlambat:</span> <strong>${d.is_late ? '⚠️ Ya' : '✅ Tidak'}</strong></div>
+          ${d.score !== null ? `<div class="col-6"><span class="text-muted">Nilai:</span> <strong class="text-success">${d.score}/${d.max_score}</strong></div>` : ''}
+        </div>
+        ${d.text_content ? `
+        <div class="mb-3">
+          <label class="form-label small fw-600 text-uppercase" style="letter-spacing:.4px">✏️ Jawaban / Konten Teks</label>
+          <div class="bg-white border p-3 rounded-4 shadow-sm" style="white-space:pre-wrap;max-height:220px;overflow:auto">${d.text_content}</div>
+        </div>` : ''}
+        ${fileBlock}
+        ${d.feedback ? `<div class="mb-3"><label class="form-label small fw-600">Feedback Sebelumnya</label><div class="bg-success-soft text-success p-2 rounded-4 small">${d.feedback}</div></div>` : ''}
+        ${d.revision_notes ? `<div class="mb-2"><label class="form-label small fw-600 text-warning">Catatan Revisi Terakhir (${d.last_revision_at || ''})</label><div class="bg-warning-soft text-warning p-2 rounded-4 small">${d.revision_notes}</div></div>` : ''}
+        ${!d.text_content && !d.file_url ? '<div class="text-center text-muted py-3"><i class="bi bi-inbox display-6 d-block mb-2"></i>Tidak ada konten yang dikumpulkan.</div>' : ''}
+      `;
+
+      // Load zip contents lazily if applicable
+      if (d.file_kind === 'zip') {
+        try {
+          const zres = await fetch(`/lecturer/assignments/${aid}/submissions/${subId}/zip-contents`);
+          const zdata = await zres.json();
+          const box = document.getElementById(`zipContents-${subId}`);
+          if (!box) return;
+          if (!zdata.success) { box.innerHTML = `<span class="text-danger">${zdata.message}</span>`; return; }
+          if (!zdata.entries.length) { box.innerHTML = '<span class="text-muted">Folder ZIP kosong.</span>'; return; }
+          let list = `<div class="fw-600 mb-1">Isi Folder (${zdata.total} file):</div><div class="list-group list-group-flush" style="max-height:180px;overflow:auto">`;
+          zdata.entries.forEach(e => {
+            list += `<div class="list-group-item bg-transparent px-0 py-1 border-0 d-flex justify-content-between">
+              <span><i class="bi bi-file-earmark me-1 text-muted"></i>${e.name}</span>
+              <span class="text-muted">${e.size}</span>
+            </div>`;
+          });
+          list += '</div>';
+          box.innerHTML = list;
+        } catch(e) {
+          const box = document.getElementById(`zipContents-${subId}`);
+          if (box) box.innerHTML = '<span class="text-danger">Gagal membaca isi ZIP.</span>';
+        }
+      }
+    } catch(e) {
+      document.getElementById('detailBody').innerHTML = '<div class="alert alert-danger">Terjadi kesalahan.</div>';
+    }
+  });
+});
+
+// ── Revision request modal ──
+const revisionModal = new bootstrap.Modal(document.getElementById('modalRevision'));
+let revTargetAid = null, revTargetSubId = null;
+document.querySelectorAll('.revision-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    revTargetAid = this.dataset.aid;
+    revTargetSubId = this.dataset.subId;
+    document.getElementById('revStudentName').textContent = this.dataset.name;
+    document.getElementById('revNotes').value = '';
+    document.getElementById('revMsg').textContent = '';
+    revisionModal.show();
+  });
+});
+document.getElementById('btnSendRevision').addEventListener('click', async function() {
+  const notes = document.getElementById('revNotes').value.trim();
+  const msgEl = document.getElementById('revMsg');
+  if (!notes) { msgEl.innerHTML = '<span class="text-danger">Catatan revisi wajib diisi.</span>'; return; }
+  const fd = new FormData();
+  fd.append('csrf_token', CSRF);
+  fd.append('notes', notes);
+  try {
+    const res = await fetch(`/lecturer/assignments/${revTargetAid}/submissions/${revTargetSubId}/revision`, { method:'POST', body: fd });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.innerHTML = '<span class="text-success">Permintaan revisi terkirim!</span>';
+      setTimeout(() => location.reload(), 900);
+    } else {
+      msgEl.innerHTML = `<span class="text-danger">${data.message}</span>`;
+    }
+  } catch(e) {
+    msgEl.innerHTML = '<span class="text-danger">Gagal mengirim permintaan.</span>';
+  }
+});
+</script>
+{% endblock %}

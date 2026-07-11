@@ -1,0 +1,755 @@
+{% extends 'base.html' %}
+{% block title %}Pengaturan Institusi — OmniClass{% endblock %}
+{% block page_title %}Pengaturan Institusi{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Section Card ──────────────────────────────────── */
+.settings-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0,0,0,.05);
+  transition: box-shadow .2s;
+}
+.settings-card:hover { box-shadow: 0 6px 24px rgba(0,0,0,.08); }
+
+.settings-card-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex; align-items: center; gap: 14px;
+}
+.sh-icon {
+  width: 42px; height: 42px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.sh-title   { font-size: 15px; font-weight: 700; color: #0f172a; }
+.sh-subtitle{ font-size: 12px; color: #94a3b8; margin-top: 1px; }
+
+/* ── Logo Upload Zone ───────────────────────────────── */
+.logo-zone {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/7;
+  border: 2.5px dashed #cbd5e1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f8fafc 0%, #f0f4ff 100%);
+  cursor: pointer;
+  transition: all .25s;
+  display: flex; align-items: center; justify-content: center;
+}
+.logo-zone:hover, .logo-zone.drag-over {
+  border-color: #6366f1;
+  background: linear-gradient(135deg, #f0eeff 0%, #e8e4ff 100%);
+  box-shadow: 0 0 0 4px rgba(99,102,241,.08);
+}
+
+.logo-placeholder {
+  text-align: center; padding: 20px;
+  pointer-events: none;
+}
+.logo-placeholder i   { font-size: 36px; color: #c7d2fe; display: block; margin-bottom: 8px; }
+.logo-placeholder p   { font-size: 13px; font-weight: 600; color: #64748b; margin: 0 0 4px; }
+.logo-placeholder span{ font-size: 11.5px; color: #94a3b8; }
+
+.logo-preview-img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  padding: 16px;
+  display: none;
+}
+
+.logo-edit-overlay {
+  position: absolute; inset: 0;
+  background: rgba(79,70,229,.55);
+  backdrop-filter: blur(4px);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 8px; opacity: 0; transition: opacity .2s;
+  color: #fff;
+}
+.logo-zone:hover .logo-edit-overlay.has-logo { opacity: 1; }
+.logo-edit-overlay i   { font-size: 28px; }
+.logo-edit-overlay span{ font-size: 13px; font-weight: 600; }
+
+.logo-badge {
+  position: absolute; top: 10px; right: 10px;
+  background: #22c55e; color: #fff;
+  font-size: 10.5px; font-weight: 700;
+  padding: 3px 10px; border-radius: 20px;
+  display: none;
+}
+.logo-badge.show { display: block; }
+
+/* ── Logo action row ─────────────────────────────────── */
+.logo-actions { display: flex; gap: 10px; margin-top: 14px; }
+.btn-upload-logo {
+  flex: 1;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff; border: none;
+  padding: 10px 18px; border-radius: 10px;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all .2s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-upload-logo:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(79,70,229,.35);
+}
+.btn-remove-logo {
+  padding: 10px 14px; border-radius: 10px;
+  border: 1.5px solid #fecaca; background: #fff5f5;
+  color: #ef4444; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all .2s;
+  display: none; align-items: center; justify-content: center; gap: 6px;
+}
+.btn-remove-logo:hover { background: #fee2e2; }
+.btn-remove-logo.show { display: flex; }
+
+/* ── Form fields ─────────────────────────────────────── */
+.field-group { margin-bottom: 20px; }
+.field-label {
+  font-size: 12.5px; font-weight: 600; color: #475569;
+  text-transform: uppercase; letter-spacing: .5px;
+  margin-bottom: 6px; display: block;
+}
+.field-input {
+  width: 100%;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-size: 14px; color: #0f172a;
+  transition: all .18s;
+  font-family: 'Inter', sans-serif;
+}
+.field-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(99,102,241,.1);
+}
+.field-input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+.field-input::placeholder { color: #cbd5e1; }
+textarea.field-input { resize: vertical; min-height: 90px; }
+
+/* ── Save button ─────────────────────────────────────── */
+.btn-save {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff; border: none;
+  padding: 12px 28px; border-radius: 10px;
+  font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: all .2s;
+  display: inline-flex; align-items: center; gap: 8px;
+  box-shadow: 0 4px 16px rgba(79,70,229,.3);
+}
+.btn-save:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(79,70,229,.4);
+}
+.btn-save:active { transform: translateY(0); }
+
+/* ── Capacity ────────────────────────────────────────── */
+.capacity-bar-wrap {
+  background: #f1f5f9; border-radius: 20px;
+  height: 10px; overflow: hidden; margin: 8px 0;
+}
+.capacity-bar-fill {
+  height: 100%; border-radius: 20px;
+  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+  transition: width .6s cubic-bezier(.4,0,.2,1);
+  position: relative;
+}
+.capacity-bar-fill::after {
+  content: '';
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: 6px; background: rgba(255,255,255,.5);
+  border-radius: 0 20px 20px 0;
+}
+
+.capacity-numbers {
+  display: flex; justify-content: space-between;
+  font-size: 12px; color: #64748b;
+}
+.capacity-numbers strong { color: #0f172a; }
+
+.capacity-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 12px; border-radius: 20px;
+  font-size: 11.5px; font-weight: 600;
+  margin-top: 8px;
+}
+
+/* ── Integration items ───────────────────────────────── */
+.integ-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid #f8fafc;
+  transition: background .15s;
+}
+.integ-item:last-child { border-bottom: none; }
+.integ-icon-wrap {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.integ-info { flex: 1; min-width: 0; }
+.integ-name { font-size: 13.5px; font-weight: 600; color: #0f172a; }
+.integ-desc { font-size: 11.5px; color: #94a3b8; margin-top: 1px; }
+.integ-toggle {
+  position: relative; width: 42px; height: 24px;
+  flex-shrink: 0;
+}
+.integ-toggle input { opacity: 0; width: 0; height: 0; }
+.integ-slider {
+  position: absolute; inset: 0;
+  background: #e2e8f0; border-radius: 24px;
+  cursor: pointer; transition: background .25s;
+}
+.integ-slider::before {
+  content: ''; position: absolute;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; top: 3px; left: 3px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.15);
+  transition: transform .25s;
+}
+.integ-toggle input:checked + .integ-slider { background: #4f46e5; }
+.integ-toggle input:checked + .integ-slider::before { transform: translateX(18px); }
+
+/* ── Danger zone ─────────────────────────────────────── */
+.danger-zone {
+  border: 1.5px solid #fecaca;
+  border-radius: 14px;
+  padding: 18px 20px;
+  background: #fff5f5;
+}
+.danger-zone h6 { color: #dc2626; font-weight: 700; }
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 767px) {
+  .settings-card-header { padding: 14px 16px; }
+  .logo-actions { flex-direction: column; }
+  .btn-save { width: 100%; justify-content: center; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Page Header ── -->
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+  <div>
+    <h4 class="fw-700 mb-1" style="font-family:'Plus Jakarta Sans',sans-serif">
+      <i class="bi bi-gear-fill me-2" style="color:#4f46e5"></i>Pengaturan Institusi
+    </h4>
+    <p class="text-muted mb-0" style="font-size:13.5px">
+      Kelola profil, logo, dan konfigurasi institusi Anda
+    </p>
+  </div>
+  <div class="d-flex gap-2">
+    <span class="badge" style="background:rgba(79,70,229,.1);color:#4f46e5;padding:7px 14px;border-radius:20px;font-size:12px;font-weight:600">
+      <i class="bi bi-building me-1"></i>{{ institution.code }}
+    </span>
+    <span class="badge {% if institution.is_active %}bg-success-soft text-success{% else %}bg-danger-soft text-danger{% endif %}" style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:600">
+      <i class="bi bi-circle-fill me-1" style="font-size:7px"></i>
+      {{ 'Aktif' if institution.is_active else 'Nonaktif' }}
+    </span>
+  </div>
+</div>
+
+<div class="row g-4">
+
+  <!-- ══════════════════════════════════════════
+       LEFT COLUMN
+  ══════════════════════════════════════════ -->
+  <div class="col-lg-8 order-2 order-lg-1">
+
+    <!-- ── Informasi Institusi ── -->
+    <div class="settings-card mb-4">
+      <div class="settings-card-header">
+        <div class="sh-icon" style="background:rgba(79,70,229,.1)">
+          <i class="bi bi-building-fill" style="color:#4f46e5"></i>
+        </div>
+        <div>
+          <div class="sh-title">Informasi Institusi</div>
+          <div class="sh-subtitle">Data profil resmi institusi Anda</div>
+        </div>
+      </div>
+      <div class="p-4">
+        <form method="POST" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="form_type" value="info">
+
+          <div class="row g-3">
+            <div class="col-md-8">
+              <div class="field-group mb-0">
+                <label class="field-label">Nama Institusi <span style="color:#ef4444">*</span></label>
+                <div class="position-relative">
+                  <input type="text" name="name" class="field-input ps-5"
+                         value="{{ institution.name }}" required
+                         placeholder="Nama lengkap institusi">
+                  <i class="bi bi-building position-absolute" style="left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:15px;pointer-events:none"></i>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="field-group mb-0">
+                <label class="field-label">Kode Institusi</label>
+                <div class="position-relative">
+                  <input type="text" class="field-input ps-5"
+                         value="{{ institution.code }}" disabled>
+                  <i class="bi bi-hash position-absolute" style="left:14px;top:50%;transform:translateY(-50%);color:#cbd5e1;font-size:15px;pointer-events:none"></i>
+                </div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:4px">
+                  <i class="bi bi-lock-fill me-1"></i>Hanya dapat diubah oleh Super Admin
+                </div>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="field-group mb-0">
+                <label class="field-label">Email Resmi</label>
+                <div class="position-relative">
+                  <input type="email" name="email" class="field-input ps-5"
+                         value="{{ institution.email or '' }}"
+                         placeholder="email@institusi.ac.id">
+                  <i class="bi bi-envelope-fill position-absolute" style="left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:14px;pointer-events:none"></i>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="field-group mb-0">
+                <label class="field-label">Nomor Telepon</label>
+                <div class="position-relative">
+                  <input type="text" name="phone" class="field-input ps-5"
+                         value="{{ institution.phone or '' }}"
+                         placeholder="021-xxxx-xxxx">
+                  <i class="bi bi-telephone-fill position-absolute" style="left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:14px;pointer-events:none"></i>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div class="field-group mb-0">
+                <label class="field-label">Alamat Lengkap</label>
+                <div class="position-relative">
+                  <textarea name="address" class="field-input ps-5"
+                             placeholder="Jl. ... No. ..., Kota, Provinsi">{{ institution.address or '' }}</textarea>
+                  <i class="bi bi-geo-alt-fill position-absolute" style="left:14px;top:14px;color:#94a3b8;font-size:14px;pointer-events:none"></i>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div class="field-group mb-0">
+                <label class="field-label">Website Resmi</label>
+                <div class="position-relative">
+                  <input type="url" name="website" class="field-input ps-5"
+                         value="{{ institution.website or '' }}"
+                         placeholder="https://institusi.ac.id">
+                  <i class="bi bi-globe2 position-absolute" style="left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:14px;pointer-events:none"></i>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 pt-2">
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <button type="submit" class="btn-save">
+                  <i class="bi bi-check2-circle"></i>Simpan Perubahan
+                </button>
+                <button type="reset" style="background:transparent;border:1.5px solid #e2e8f0;color:#64748b;padding:12px 20px;border-radius:10px;font-size:13.5px;font-weight:500;cursor:pointer;transition:all .18s" onmouseover="this.style.borderColor='#94a3b8'" onmouseout="this.style.borderColor='#e2e8f0'">
+                  <i class="bi bi-arrow-counterclockwise me-2"></i>Reset
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Zona Bahaya ── -->
+    <div class="settings-card">
+      <div class="settings-card-header">
+        <div class="sh-icon" style="background:rgba(239,68,68,.1)">
+          <i class="bi bi-shield-exclamation" style="color:#ef4444"></i>
+        </div>
+        <div>
+          <div class="sh-title" style="color:#ef4444">Zona Bahaya</div>
+          <div class="sh-subtitle">Tindakan yang tidak dapat dibatalkan</div>
+        </div>
+      </div>
+      <div class="p-4">
+        <div class="danger-zone">
+          <h6 class="mb-1"><i class="bi bi-exclamation-triangle-fill me-2"></i>Nonaktifkan Institusi</h6>
+          <p class="mb-3" style="font-size:13px;color:#b91c1c">
+            Menonaktifkan institusi akan mencegah semua pengguna untuk login.
+            Tindakan ini memerlukan konfirmasi Super Admin.
+          </p>
+          <button type="button" style="background:#fff;border:1.5px solid #fecaca;color:#ef4444;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .18s"
+                  onclick="alert('Fitur ini memerlukan konfirmasi Super Admin.\nHubungi tim OmniClass untuk melanjutkan.')">
+            <i class="bi bi-power me-2"></i>Nonaktifkan Institusi
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       RIGHT COLUMN
+  ══════════════════════════════════════════ -->
+  <div class="col-lg-4 order-1 order-lg-2">
+
+    <!-- ── Logo Institusi ── -->
+    <div class="settings-card mb-4">
+      <div class="settings-card-header">
+        <div class="sh-icon" style="background:rgba(139,92,246,.1)">
+          <i class="bi bi-image-fill" style="color:#7c3aed"></i>
+        </div>
+        <div>
+          <div class="sh-title">Logo Institusi</div>
+          <div class="sh-subtitle">JPG, PNG, SVG, WebP · Maks 5 MB</div>
+        </div>
+      </div>
+      <div class="p-4">
+        <form method="POST" enctype="multipart/form-data" id="logoForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="form_type" value="logo">
+          <input type="file" id="logoInput" name="logo"
+                 accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                 class="d-none" onchange="handleLogoSelect(this)">
+
+          <!-- Drop zone -->
+          <div class="logo-zone" id="logoZone"
+               onclick="document.getElementById('logoInput').click()"
+               ondragover="event.preventDefault();this.classList.add('drag-over')"
+               ondragleave="this.classList.remove('drag-over')"
+               ondrop="handleLogoDrop(event)">
+
+            <!-- Placeholder -->
+            <div class="logo-placeholder" id="logoPlaceholder">
+              <i class="bi bi-cloud-arrow-up-fill"></i>
+              <p>Klik atau seret logo ke sini</p>
+              <span>JPG, PNG, SVG, WebP · Maks 5 MB</span>
+            </div>
+
+            <!-- Preview -->
+            <img id="logoPreview" class="logo-preview-img"
+                 {% if institution.logo and institution.logo != 'default_logo.svg' %}
+                 src="/static/img/{{ institution.logo }}"
+                 style="display:block"
+                 {% else %}
+                 src=""
+                 {% endif %}
+                 alt="Logo Preview"
+                 onerror="this.style.display='none'">
+
+            <!-- Edit overlay (only shows when logo exists) -->
+            <div class="logo-edit-overlay {% if institution.logo and institution.logo != 'default_logo.svg' %}has-logo{% endif %}" id="logoOverlay">
+              <i class="bi bi-pencil-fill"></i>
+              <span>Ganti Logo</span>
+            </div>
+
+            <!-- Badge -->
+            <div class="logo-badge {% if institution.logo and institution.logo != 'default_logo.svg' %}show{% endif %}" id="logoBadge">
+              <i class="bi bi-check2 me-1"></i>Terpasang
+            </div>
+          </div>
+
+          <!-- Hide placeholder if logo exists -->
+          {% if institution.logo and institution.logo != 'default_logo.svg' %}
+          <script>document.getElementById('logoPlaceholder').style.display='none';</script>
+          {% endif %}
+
+          <!-- Action buttons -->
+          <div class="logo-actions">
+            <button type="button" class="btn-upload-logo" onclick="document.getElementById('logoInput').click()">
+              <i class="bi bi-upload"></i>
+              <span id="uploadBtnText">
+                {% if institution.logo and institution.logo != 'default_logo.svg' %}Ganti Logo{% else %}Upload Logo{% endif %}
+              </span>
+            </button>
+            <button type="button"
+                    class="btn-remove-logo {% if institution.logo and institution.logo != 'default_logo.svg' %}show{% endif %}"
+                    id="removeLogo"
+                    onclick="removeLogo()">
+              <i class="bi bi-trash3-fill"></i>Hapus
+            </button>
+          </div>
+
+          <!-- File info bar -->
+          <div id="fileInfoBar" class="d-none mt-3 p-3 rounded-3 d-flex align-items-center gap-3"
+               style="background:#f0eeff;border:1.5px solid #c4b5fd">
+            <i class="bi bi-file-earmark-image-fill" style="color:#7c3aed;font-size:20px;flex-shrink:0"></i>
+            <div style="flex:1;min-width:0">
+              <div id="fileNameText" class="fw-600" style="font-size:13px;color:#4f46e5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+              <div id="fileSizeText" style="font-size:11.5px;color:#7c3aed"></div>
+            </div>
+            <button type="submit" class="btn-save" style="padding:8px 16px;font-size:12.5px;white-space:nowrap">
+              <i class="bi bi-cloud-upload-fill"></i>Simpan Logo
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Kapasitas Platform ── -->
+    <div class="settings-card mb-4">
+      <div class="settings-card-header">
+        <div class="sh-icon" style="background:rgba(6,182,212,.1)">
+          <i class="bi bi-speedometer2" style="color:#0891b2"></i>
+        </div>
+        <div>
+          <div class="sh-title">Kapasitas Platform</div>
+          <div class="sh-subtitle">Penggunaan lisensi pengguna</div>
+        </div>
+      </div>
+      <div class="p-4">
+        {% set pct = [(active_users / institution.max_users * 100)|int, 100]|min %}
+        <div class="d-flex justify-content-between align-items-baseline mb-2">
+          <span style="font-size:13px;color:#475569;font-weight:500">Pengguna Aktif</span>
+          <span style="font-size:13px;font-weight:700;color:#0f172a">
+            {{ active_users }} <span style="color:#94a3b8;font-weight:400">/ {{ institution.max_users }}</span>
+          </span>
+        </div>
+        <div class="capacity-bar-wrap">
+          <div class="capacity-bar-fill"
+               style="width:{{ pct }}%;background:{% if pct >= 90 %}linear-gradient(90deg,#ef4444,#dc2626){% elif pct >= 70 %}linear-gradient(90deg,#f97316,#ea580c){% else %}linear-gradient(90deg,#4f46e5,#7c3aed){% endif %}">
+          </div>
+        </div>
+        <div class="d-flex justify-content-between mt-2 flex-wrap gap-2">
+          <span class="capacity-badge {% if pct >= 90 %}text-danger{% elif pct >= 70 %}text-warning{% else %}text-primary{% endif %}"
+                style="background:{% if pct >= 90 %}rgba(239,68,68,.1){% elif pct >= 70 %}rgba(249,115,22,.1){% else %}rgba(79,70,229,.1){% endif %}">
+            <i class="bi bi-{% if pct >= 90 %}exclamation-triangle-fill{% elif pct >= 70 %}dash-circle-fill{% else %}check-circle-fill{% endif %}"></i>
+            {% if pct >= 90 %}Hampir penuh
+            {% elif pct >= 70 %}Perlu perhatian
+            {% else %}Normal ({{ pct }}%){% endif %}
+          </span>
+          <span style="font-size:11.5px;color:#94a3b8">
+            Sisa: <strong style="color:#0f172a">{{ institution.max_users - active_users }}</strong> slot
+          </span>
+        </div>
+        <div class="mt-3 p-3 rounded-3" style="background:#f8fafc;border:1px solid #e2e8f0">
+          <div style="font-size:12px;color:#64748b">
+            <i class="bi bi-info-circle-fill me-2" style="color:#6366f1"></i>
+            Ingin menambah kapasitas? Hubungi tim OmniClass untuk upgrade lisensi.
+          </div>
+          <a href="mailto:support@omniclass.id"
+             style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;font-weight:600;color:#4f46e5;text-decoration:none">
+            <i class="bi bi-envelope-fill"></i>Hubungi Support
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Integrasi ── -->
+    <div class="settings-card">
+      <div class="settings-card-header">
+        <div class="sh-icon" style="background:rgba(16,185,129,.1)">
+          <i class="bi bi-plug-fill" style="color:#059669"></i>
+        </div>
+        <div>
+          <div class="sh-title">Integrasi</div>
+          <div class="sh-subtitle">Hubungkan dengan layanan eksternal</div>
+        </div>
+      </div>
+      <div class="p-4 pt-2">
+
+        <!-- Google Workspace -->
+        <div class="integ-item">
+          <div class="integ-icon-wrap" style="background:#fff3f3;border:1px solid #fee2e2">
+            <svg width="20" height="20" viewBox="0 0 48 48">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+          </div>
+          <div class="integ-info">
+            <div class="integ-name">Google Workspace</div>
+            <div class="integ-desc">SSO via akun Google institusi</div>
+          </div>
+          <label class="integ-toggle">
+            <input type="checkbox" onchange="toggleIntegration('google',this)">
+            <span class="integ-slider"></span>
+          </label>
+        </div>
+
+        <!-- Microsoft 365 -->
+        <div class="integ-item">
+          <div class="integ-icon-wrap" style="background:#eff6ff;border:1px solid #dbeafe">
+            <svg width="20" height="20" viewBox="0 0 21 21">
+              <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
+              <rect x="11" y="1"  width="9" height="9" fill="#7fba00"/>
+              <rect x="1"  y="11" width="9" height="9" fill="#00a4ef"/>
+              <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+            </svg>
+          </div>
+          <div class="integ-info">
+            <div class="integ-name">Microsoft 365</div>
+            <div class="integ-desc">SSO via akun Microsoft / Azure AD</div>
+          </div>
+          <label class="integ-toggle">
+            <input type="checkbox" onchange="toggleIntegration('microsoft',this)">
+            <span class="integ-slider"></span>
+          </label>
+        </div>
+
+        <!-- WhatsApp -->
+        <div class="integ-item">
+          <div class="integ-icon-wrap" style="background:#f0fdf4;border:1px solid #bbf7d0">
+            <i class="bi bi-whatsapp" style="font-size:18px;color:#25d366"></i>
+          </div>
+          <div class="integ-info">
+            <div class="integ-name">WhatsApp API</div>
+            <div class="integ-desc">Notifikasi via WhatsApp Business</div>
+          </div>
+          <label class="integ-toggle">
+            <input type="checkbox" onchange="toggleIntegration('whatsapp',this)">
+            <span class="integ-slider"></span>
+          </label>
+        </div>
+
+        <!-- LMS API -->
+        <div class="integ-item">
+          <div class="integ-icon-wrap" style="background:#fdf4ff;border:1px solid #e9d5ff">
+            <i class="bi bi-code-slash" style="font-size:17px;color:#9333ea"></i>
+          </div>
+          <div class="integ-info">
+            <div class="integ-name">REST API / Webhook</div>
+            <div class="integ-desc">Integrasi dengan SIAKAD / HRIS</div>
+          </div>
+          <label class="integ-toggle">
+            <input type="checkbox" onchange="toggleIntegration('api',this)">
+            <span class="integ-slider"></span>
+          </label>
+        </div>
+
+        <div class="mt-3 p-3 rounded-3" style="background:#f8fafc;border:1px dashed #cbd5e1;font-size:12px;color:#64748b">
+          <i class="bi bi-lightning-fill me-1" style="color:#f59e0b"></i>
+          Integrasi aktif memerlukan konfigurasi API Key. Hubungi tim teknis Anda.
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* ── Logo Upload ─────────────────────────────── */
+function handleLogoSelect(input) {
+  if (!input.files || !input.files[0]) return;
+  processLogoFile(input.files[0]);
+}
+
+function handleLogoDrop(e) {
+  e.preventDefault();
+  document.getElementById('logoZone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  // inject into input
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  document.getElementById('logoInput').files = dt.files;
+  processLogoFile(file);
+}
+
+function processLogoFile(file) {
+  const MAX = 5 * 1024 * 1024;
+  if (file.size > MAX) {
+    showToast('File terlalu besar. Maksimal 5 MB.', 'danger'); return;
+  }
+  const allowed = ['image/jpeg','image/png','image/gif','image/webp','image/svg+xml'];
+  if (!allowed.includes(file.type)) {
+    showToast('Format tidak didukung. Gunakan JPG, PNG, SVG, atau WebP.', 'danger'); return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const src = e.target.result;
+
+    // Update preview
+    const preview = document.getElementById('logoPreview');
+    preview.src = src;
+    preview.style.display = 'block';
+
+    // Hide placeholder, show overlay & badge
+    document.getElementById('logoPlaceholder').style.display = 'none';
+    document.getElementById('logoOverlay').classList.add('has-logo');
+    document.getElementById('logoBadge').classList.add('show');
+    document.getElementById('logoBadge').innerHTML = '<i class="bi bi-clock me-1"></i>Siap disimpan';
+    document.getElementById('logoBadge').style.background = '#f59e0b';
+
+    // Show remove button
+    document.getElementById('removeLogo').classList.add('show');
+
+    // Update upload button text
+    document.getElementById('uploadBtnText').textContent = 'Ganti Logo';
+
+    // Show file info bar
+    const bar      = document.getElementById('fileInfoBar');
+    const nameEl   = document.getElementById('fileNameText');
+    const sizeEl   = document.getElementById('fileSizeText');
+    const sizeKB   = (file.size / 1024).toFixed(1);
+    const sizeMB   = (file.size / 1024 / 1024).toFixed(2);
+    nameEl.textContent = file.name;
+    sizeEl.textContent = file.size > 1024*1024 ? `${sizeMB} MB` : `${sizeKB} KB`;
+    bar.classList.remove('d-none');
+    bar.style.display = 'flex';
+
+    showToast('Logo siap diupload. Klik "Simpan Logo" untuk menyimpan.', 'info');
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeLogo() {
+  // Reset preview
+  const preview = document.getElementById('logoPreview');
+  preview.src   = '';
+  preview.style.display = 'none';
+
+  // Reset input
+  document.getElementById('logoInput').value = '';
+
+  // Show placeholder
+  document.getElementById('logoPlaceholder').style.display = '';
+
+  // Hide overlay, badge, remove btn, file bar
+  document.getElementById('logoOverlay').classList.remove('has-logo');
+  document.getElementById('logoBadge').classList.remove('show');
+  document.getElementById('removeLogo').classList.remove('show');
+  document.getElementById('uploadBtnText').textContent = 'Upload Logo';
+  const bar = document.getElementById('fileInfoBar');
+  bar.classList.add('d-none');
+  bar.style.display = '';
+}
+
+/* ── Integration toggle ──────────────────────── */
+function toggleIntegration(name, input) {
+  const label = { google:'Google Workspace', microsoft:'Microsoft 365', whatsapp:'WhatsApp API', api:'REST API' };
+  const state  = input.checked ? 'diaktifkan' : 'dinonaktifkan';
+  showToast(`Integrasi ${label[name]} ${state}. Konfigurasi API Key diperlukan.`, input.checked ? 'success' : 'warning');
+  // In production: send AJAX to update integration status
+}
+
+/* ── Drag zone visual feedback ───────────────── */
+const zone = document.getElementById('logoZone');
+if (zone) {
+  ['dragenter','dragover'].forEach(ev => {
+    zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  });
+  ['dragleave','dragend'].forEach(ev => {
+    zone.addEventListener(ev, () => zone.classList.remove('drag-over'));
+  });
+}
+</script>
+{% endblock %}  

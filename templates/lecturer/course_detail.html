@@ -1,0 +1,233 @@
+{% extends 'base.html' %}
+{% block title %}{{ course.name }} — OmniClass{% endblock %}
+{% block page_title %}{{ course.name }}{% endblock %}
+
+{% block content %}
+{% set pm = course.program_meta %}
+<!-- Header -->
+<div class="card mb-4">
+  <div class="course-card-header rounded-top" style="height:auto;padding:24px 24px 20px;background:linear-gradient(135deg,{{ pm.color }},{{ pm.color2 }})">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h4 class="text-white fw-700 mb-1">{{ course.name }}</h4>
+        <div class="d-flex gap-2 flex-wrap">
+          <span class="badge bg-white" style="color:{{ pm.color }}">{{ course.code }}</span>
+          <span class="badge bg-white text-secondary">{{ course.credits }} SKS</span>
+          <span class="badge bg-white text-success">{{ course.semester }}</span>
+          <span class="badge bg-white" style="color:{{ pm.color }};font-weight:700">
+            <i class="bi {{ pm.icon }} me-1"></i>{{ pm.label }}
+          </span>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('lecturer.attendance') }}?course_id={{ course.id }}" class="btn btn-sm btn-light">
+          <i class="bi bi-calendar-check me-1"></i>Absensi
+        </a>
+        <a href="{{ url_for('lecturer.grades') }}?course_id={{ course.id }}" class="btn btn-sm btn-light">
+          <i class="bi bi-star me-1"></i>Nilai
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-3 text-center border-end">
+        <div class="fs-3 fw-700 text-primary">{{ students|length }}</div>
+        <div class="text-muted small">Mahasiswa Terdaftar</div>
+      </div>
+      <div class="col-md-3 text-center border-end">
+        <div class="fs-3 fw-700 text-success">{{ sessions|length }}</div>
+        <div class="text-muted small">Sesi Berlangsung</div>
+      </div>
+      <div class="col-md-3 text-center border-end">
+        <div class="fs-3 fw-700 text-warning">{{ assignments|length }}</div>
+        <div class="text-muted small">Total Tugas</div>
+      </div>
+      <div class="col-md-3 text-center">
+        <div class="fs-3 fw-700 text-purple">{{ course.room or '—' }}</div>
+        <div class="text-muted small">Ruangan</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Students -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-people-fill me-2" style="color:{{ pm.color }}"></i>Daftar Mahasiswa</h6>
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge" style="background:{{ pm.color }}">{{ students|length }}</span>
+          <button class="btn btn-sm" style="background:{{ pm.color }};color:#fff" data-bs-toggle="modal" data-bs-target="#modalAddStudent">
+            <i class="bi bi-person-plus-fill"></i>
+          </button>
+        </div>
+      </div>
+      <div class="list-group list-group-flush" style="max-height:380px;overflow-y:auto">
+        {% for student in students %}
+        <div class="list-group-item px-3 py-2 d-flex align-items-center justify-content-between">
+          <div class="d-flex align-items-center gap-2 min-w-0">
+            <img src="{{ student.avatar_url }}" class="rounded-circle" width="32" height="32">
+            <div class="flex-grow-1 min-w-0">
+              <div class="fw-500 small text-truncate">{{ student.full_name }}</div>
+              <div class="text-muted" style="font-size:.7rem">{{ student.nip_nim or student.username }}</div>
+            </div>
+          </div>
+          <form method="POST" action="{{ url_for('lecturer.remove_student', cid=course.id, sid=student.id) }}"
+                onsubmit="return confirm('Keluarkan {{ student.full_name }} dari kelas ini?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger py-0 px-2" title="Keluarkan"><i class="bi bi-x-lg"></i></button>
+          </form>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted small">Belum ada mahasiswa terdaftar</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Sessions & Assignments -->
+  <div class="col-lg-7">
+    <!-- Sessions -->
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-calendar-check-fill me-2 text-success"></i>Sesi Terakhir</h6>
+        <a href="{{ url_for('lecturer.attendance') }}?course_id={{ course.id }}" class="btn btn-sm btn-outline-success">Lihat Semua</a>
+      </div>
+      <div class="list-group list-group-flush">
+        {% for sess in sessions %}
+        <div class="list-group-item px-3 py-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <span class="badge bg-primary rounded-pill me-2">#{{ sess.meeting_number }}</span>
+              <span class="small fw-500">{{ sess.session_date.strftime('%d %b %Y') }}</span>
+              {% if sess.topic %}
+              <span class="text-muted small"> — {{ sess.topic }}</span>
+              {% endif %}
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+              <span class="text-success small fw-600">{{ sess.present_count }} hadir</span>
+              <a href="{{ url_for('lecturer.attendance_session', sid=sess.id) }}"
+                 class="btn btn-xs btn-outline-primary btn-sm py-0 px-2">
+                <i class="bi bi-eye-fill"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-3 text-muted small">Belum ada sesi absensi</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Assignments -->
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-clipboard2-check-fill me-2 text-warning"></i>Tugas</h6>
+        <a href="{{ url_for('lecturer.create_assignment') }}" class="btn btn-sm btn-warning text-dark">
+          <i class="bi bi-plus me-1"></i>Buat Tugas
+        </a>
+      </div>
+      <div class="list-group list-group-flush">
+        {% for asgn in assignments %}
+        <div class="list-group-item px-3 py-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <span class="badge bg-primary-soft text-primary me-1 small">{{ asgn.type | title }}</span>
+              <span class="small fw-500">{{ asgn.title }}</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="text-muted small">{{ asgn.due_date.strftime('%d %b') }}</span>
+              <span class="badge bg-{{ 'success' if asgn.submission_count > 0 else 'secondary' }}-soft text-{{ 'success' if asgn.submission_count > 0 else 'secondary' }} small">
+                {{ asgn.submission_count }} kumpul
+              </span>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-3 text-muted small">Belum ada tugas</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modal: Tambah Mahasiswa (khusus kelas ini) ═══ -->
+<div class="modal fade" id="modalAddStudent" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius:18px;overflow:hidden;border:none">
+      <div class="modal-header" style="background:{{ pm.color }};color:#fff">
+        <h6 class="modal-title fw-700 mb-0">
+          <i class="bi bi-person-plus-fill me-2"></i>Tambah Mahasiswa — {{ course.code }} ({{ course.program }})
+        </h6>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <ul class="nav nav-pills mb-3" id="addStuTabs">
+          <li class="nav-item"><a class="nav-link active" data-bs-toggle="pill" href="#tabExisting">Mahasiswa Terdaftar</a></li>
+          <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tabNewAccount">Buat Akun Baru</a></li>
+        </ul>
+        <div class="tab-content">
+          <!-- Enroll existing student -->
+          <div class="tab-pane fade show active" id="tabExisting">
+            <form method="POST" action="{{ url_for('lecturer.add_existing_student', cid=course.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label class="form-label small fw-600">Pilih Mahasiswa</label>
+              <select name="student_id" class="form-select mb-3" required>
+                <option value="">-- Pilih mahasiswa --</option>
+                {% for s in available_students %}
+                <option value="{{ s.id }}">{{ s.full_name }} — {{ s.nip_nim or s.username }}{% if s.program %} ({{ s.program }}){% endif %}</option>
+                {% else %}
+                <option value="" disabled>Tidak ada mahasiswa yang bisa ditambahkan</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn w-100 fw-600" style="background:{{ pm.color }};color:#fff">
+                <i class="bi bi-check2-circle me-2"></i>Daftarkan ke Kelas {{ course.program }}
+              </button>
+            </form>
+          </div>
+          <!-- Create brand-new student account -->
+          <div class="tab-pane fade" id="tabNewAccount">
+            <form method="POST" action="{{ url_for('lecturer.create_and_enroll_student', cid=course.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label small fw-600">Nama Lengkap</label>
+                  <input type="text" name="full_name" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-600">NIM</label>
+                  <input type="text" name="nip_nim" class="form-control">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-600">Email</label>
+                  <input type="email" name="email" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-600">Username</label>
+                  <input type="text" name="username" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-600">No. Telepon</label>
+                  <input type="text" name="phone" class="form-control">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-600">Password</label>
+                  <input type="password" name="password" class="form-control" placeholder="Default: mahasiswa123">
+                </div>
+              </div>
+              <div class="form-text mb-2">
+                Akun akan otomatis terdaftar ke kelas <strong>{{ course.program }} — {{ course.name }} ({{ course.code }})</strong>.
+              </div>
+              <button type="submit" class="btn w-100 fw-600" style="background:{{ pm.color }};color:#fff">
+                <i class="bi bi-person-plus-fill me-2"></i>Buat &amp; Daftarkan
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

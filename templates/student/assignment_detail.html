@@ -1,0 +1,369 @@
+{% extends 'base.html' %}
+{% block title %}{{ assignment.title }} — OmniClass{% endblock %}
+{% block page_title %}Detail Tugas{% endblock %}
+{% set pm = assignment.course.program_meta %}
+
+{% block content %}
+{% if active_session and not already_checked_in %}
+<!-- ═══ QR Attendance Gate — must check in before working on the assignment ═══ -->
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card" style="border-radius:20px;overflow:hidden;border:none;box-shadow:0 10px 34px rgba(0,0,0,.12)">
+      <div class="p-4 text-white" style="background:linear-gradient(135deg,{{ pm.color }},{{ pm.color2 }})">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span style="width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block;animation:qrpulse 1.4s infinite"></span>
+          <strong>Absen Diperlukan Sebelum Mengerjakan Tugas</strong>
+        </div>
+        <div style="font-size:12.5px;opacity:.9">{{ assignment.course.name }} ({{ assignment.course.code }}) — Pertemuan #{{ active_session.meeting_number }}</div>
+      </div>
+      <div class="card-body p-4 text-center">
+        <p class="text-muted mb-3">
+          Dosen mengaktifkan sesi absensi untuk kelas ini. Silakan absen dengan scan/konfirmasi QR di bawah
+          sebelum Anda bisa mengerjakan &amp; mengumpulkan tugas <strong>"{{ assignment.title }}"</strong>.
+        </p>
+        <div class="d-inline-block p-3 rounded-4 shadow-sm mb-3" style="background:#fff">
+          <div id="qrContainer"></div>
+        </div>
+        <div class="mb-3">
+          <span class="text-muted small">Berlaku selama</span>
+          <span class="fw-800" id="qrCountdown" style="color:{{ pm.color }};font-variant-numeric:tabular-nums">--</span>
+          <span class="text-muted small">detik</span>
+        </div>
+        <button class="btn fw-600 px-4" style="background:{{ pm.color }};color:#fff" id="btnSelfCheckin" onclick="selfCheckin()">
+          <i class="bi bi-check2-circle me-2"></i>Tandai Hadir Sekarang
+        </button>
+        <div id="checkinMsg" class="small mt-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<style>@keyframes qrpulse { 0%,100%{opacity:1} 50%{opacity:.4} }</style>
+{% else %}
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <span class="badge bg-primary-soft text-primary mb-2">{{ assignment.type | title }}</span>
+            <h4 class="fw-700">{{ assignment.title }}</h4>
+            <div class="d-flex flex-wrap gap-3 text-muted small">
+              <span><i class="bi bi-book me-1"></i>{{ assignment.course.name }}</span>
+              <span><i class="bi bi-person me-1"></i>{{ assignment.lecturer.full_name }}</span>
+              <span><i class="bi bi-star me-1"></i>Maks: {{ assignment.max_score }} poin</span>
+            </div>
+          </div>
+          {% if submission and submission.score is not none %}
+          <div class="text-center p-3 bg-success-soft rounded">
+            <div class="fs-3 fw-700 text-success">{{ submission.score }}</div>
+            <small class="text-success">/ {{ assignment.max_score }}</small>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="alert {% if assignment.is_overdue %}alert-danger{% elif (assignment.due_date - now()).days <= 1 %}alert-warning{% else %}alert-info{% endif %} py-2">
+          <i class="bi bi-clock me-2"></i>
+          <strong>Batas Waktu:</strong> {{ assignment.due_date.strftime('%A, %d %B %Y pukul %H:%M') }}
+          {% if assignment.is_overdue %}<span class="ms-2 badge bg-danger">Sudah Lewat</span>{% endif %}
+          {% if assignment.allow_late and assignment.late_penalty > 0 %}
+          <div class="small mt-1">Pengumpulan terlambat dikenakan penalti {{ assignment.late_penalty }}% per hari.</div>
+          {% endif %}
+        </div>
+
+        <div class="mt-3">
+          <h6 class="fw-600">Deskripsi Tugas</h6>
+          <div class="text-muted">{{ assignment.description or 'Tidak ada deskripsi.' }}</div>
+        </div>
+
+        {% if assignment.file_url %}
+        <div class="mt-3">
+          <a href="{{ assignment.file_url }}" class="btn btn-outline-primary btn-sm" target="_blank">
+            <i class="bi bi-download me-1"></i>Download Lampiran
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if submission and submission.status == 'revision' %}
+    <!-- Needs revision -->
+    <div class="card border-warning mb-4">
+      <div class="card-header bg-warning-soft">
+        <h6 class="mb-0 fw-600 text-warning"><i class="bi bi-arrow-repeat me-2"></i>Dosen Meminta Revisi (ke-{{ submission.revision_count }})</h6>
+      </div>
+      <div class="card-body">
+        <div class="bg-light p-3 rounded mb-3">
+          <label class="form-label text-muted small mb-1">Catatan Revisi</label>
+          <div>{{ submission.revision_notes }}</div>
+        </div>
+        <p class="text-muted small mb-3">Pengumpulan sebelumnya: {{ submission.submitted_at.strftime('%d %b %Y, %H:%M') }}</p>
+        {% if submission.file_url %}
+        <div class="mb-3 p-2 rounded border bg-white d-flex align-items-center gap-2">
+          <i class="bi bi-paperclip text-muted"></i>
+          <span class="small text-muted">File sebelumnya: <strong>{{ submission.file_name }}</strong></span>
+          <a href="{{ submission.file_url }}" target="_blank" class="btn btn-sm btn-outline-secondary ms-auto py-0">Lihat</a>
+        </div>
+        {% endif %}
+        <form method="POST" action="{{ url_for('student.submit_assignment', aid=assignment.id) }}" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-3">
+            <label class="form-label fw-500">Upload File Revisi (Foto / ZIP / Dokumen)</label>
+            <div class="upload-drop-zone" id="dropZoneRev">
+              <i class="bi bi-cloud-upload display-4 text-warning mb-2 d-block"></i>
+              <p class="mb-1">Drag & drop file revisi di sini atau</p>
+              <input type="file" id="fileInputRev" name="file" class="d-none">
+              <button type="button" class="btn btn-outline-warning btn-sm" onclick="document.getElementById('fileInputRev').click()">Pilih File</button>
+              <p class="text-muted small mt-2 mb-0">Foto, ZIP, PDF, Word — Maks 50MB. Kosongkan jika hanya mengubah teks.</p>
+            </div>
+            <div id="fileInfoRev" class="mt-2 d-none"></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-500">Perbarui Jawaban</label>
+            <textarea name="text_content" class="form-control" rows="5" placeholder="Ketik jawaban revisi di sini...">{{ submission.text_content or '' }}</textarea>
+          </div>
+          <button type="submit" class="btn btn-warning fw-600" onclick="return confirm('Kumpulkan revisi ini ke dosen?')">
+            <i class="bi bi-send-fill me-2"></i>Kumpulkan Revisi
+          </button>
+        </form>
+      </div>
+    </div>
+    {% elif submission %}
+    <!-- Already submitted -->
+    <div class="card">
+      <div class="card-header bg-success-soft">
+        <h6 class="mb-0 fw-600 text-success"><i class="bi bi-check-circle-fill me-2"></i>Tugas Sudah Dikumpulkan</h6>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label text-muted small">Waktu Pengumpulan</label>
+            <div class="fw-500">{{ submission.submitted_at.strftime('%d %b %Y, %H:%M') }}
+              {% if submission.is_late %}<span class="badge bg-danger ms-2">Terlambat</span>{% endif %}
+            </div>
+          </div>
+          {% if submission.score is not none %}
+          <div class="col-md-3">
+            <label class="form-label text-muted small">Nilai</label>
+            <div class="fw-700 fs-5 text-success">{{ submission.score }}/{{ assignment.max_score }}</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label text-muted small">Nilai Final</label>
+            <div class="fw-700 fs-5 {% if submission.final_score < submission.score %}text-warning{% else %}text-success{% endif %}">{{ submission.final_score }}</div>
+          </div>
+          {% endif %}
+          {% if submission.feedback %}
+          <div class="col-12">
+            <label class="form-label text-muted small">Feedback Dosen</label>
+            <div class="bg-light p-3 rounded">{{ submission.feedback }}</div>
+          </div>
+          {% endif %}
+          {% if submission.file_url %}
+          <div class="col-12">
+            <label class="form-label text-muted small">File Terlampir</label>
+            <div class="d-flex align-items-center gap-2 p-2 rounded border">
+              <i class="bi bi-paperclip text-muted"></i>
+              <span class="small">{{ submission.file_name }}</span>
+              <a href="{{ submission.file_url }}" target="_blank" class="btn btn-sm btn-outline-primary ms-auto py-0">
+                <i class="bi bi-download me-1"></i>Lihat/Unduh
+              </a>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% elif not assignment.is_overdue or assignment.allow_late %}
+    <!-- Submit form -->
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600"><i class="bi bi-upload me-2 text-primary"></i>Kumpulkan Tugas</h6></div>
+      <div class="card-body">
+        {% if assignment.is_overdue %}
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle me-2"></i>
+          Anda mengumpulkan terlambat. Penalti {{ assignment.late_penalty }}% per hari akan diterapkan.
+        </div>
+        {% endif %}
+        <form method="POST" action="{{ url_for('student.submit_assignment', aid=assignment.id) }}" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-3">
+            <label class="form-label fw-500">Upload File</label>
+            <div class="upload-drop-zone" id="dropZone">
+              <i class="bi bi-cloud-upload display-4 text-primary mb-2 d-block"></i>
+              <p class="mb-1">Drag & drop file di sini atau</p>
+              <input type="file" id="fileInput" name="file" class="d-none">
+              <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('fileInput').click()">Pilih File</button>
+              <p class="text-muted small mt-2 mb-0">PDF, Word, ZIP — Maks 50MB</p>
+            </div>
+            <div id="fileInfo" class="mt-2 d-none"></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-500">Atau ketik jawaban langsung</label>
+            <textarea name="text_content" class="form-control" rows="5" placeholder="Ketik jawaban di sini..."></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary" onclick="return confirm('Yakin ingin mengumpulkan? Pengumpulan tidak dapat diubah.')">
+            <i class="bi bi-send-fill me-2"></i>Kumpulkan Sekarang
+          </button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="card border-danger">
+      <div class="card-body text-center py-5">
+        <i class="bi bi-x-circle-fill text-danger display-3 mb-3 d-block"></i>
+        <h5 class="text-danger">Batas Waktu Telah Lewat</h5>
+        <p class="text-muted">Pengumpulan terlambat tidak diizinkan untuk tugas ini.</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600">Info Tugas</h6></div>
+      <div class="list-group list-group-flush">
+        <div class="list-group-item d-flex justify-content-between">
+          <span class="text-muted small">Jenis</span>
+          <span class="badge bg-primary-soft text-primary">{{ assignment.type | title }}</span>
+        </div>
+        <div class="list-group-item d-flex justify-content-between">
+          <span class="text-muted small">Nilai Maks</span>
+          <strong>{{ assignment.max_score }}</strong>
+        </div>
+        <div class="list-group-item d-flex justify-content-between">
+          <span class="text-muted small">Izin Terlambat</span>
+          <span>{{ '✅ Ya' if assignment.allow_late else '❌ Tidak' }}</span>
+        </div>
+        <div class="list-group-item d-flex justify-content-between">
+          <span class="text-muted small">Penalti</span>
+          <strong>{{ assignment.late_penalty }}%/hari</strong>
+        </div>
+        <div class="list-group-item d-flex justify-content-between">
+          <span class="text-muted small">Cek Plagiarisme</span>
+          <span>{{ '✅ Aktif' if assignment.plagiarism_check else '—' }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if active_session and not already_checked_in %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+const CSRF = '{{ csrf_token() }}';
+const COURSE_ID = {{ assignment.course.id }};
+const TOKEN_URL = '{{ url_for("student.course_qr_token", cid=assignment.course.id) }}';
+const CHECKIN_URL = '{{ url_for("student.checkin") }}';
+let qrCountdownVal = 30;
+let qrInterval = null;
+
+function renderQR(token) {
+  const c = document.getElementById('qrContainer');
+  if (!c) return;
+  c.innerHTML = '';
+  new QRCode(c, { text: `OMNICLASS|${COURSE_ID}|${token}`, width:180, height:180,
+    colorDark:'{{ pm.color }}', colorLight:'#ffffff', correctLevel: QRCode.CorrectLevel.M });
+}
+
+async function pollToken() {
+  try {
+    const res = await fetch(TOKEN_URL);
+    const data = await res.json();
+    if (!data.active) return;
+    if (data.already_checked_in) {
+      document.querySelector('.card-body.p-4.text-center').innerHTML =
+        '<div class="text-center py-2"><i class="bi bi-check-circle-fill text-success display-4 mb-2 d-block"></i><h6 class="fw-700 mb-2">Anda sudah tercatat hadir ✅</h6><a href="" onclick="location.reload();return false;" class="btn btn-primary btn-sm">Lanjut Kerjakan Tugas</a></div>';
+      clearInterval(qrInterval);
+      return;
+    }
+    window._qrToken = data.token;
+    renderQR(data.token);
+    const secsLeft = Math.max(0, Math.round((new Date(data.expires_at) - new Date())/1000));
+    qrCountdownVal = secsLeft > 0 ? secsLeft : 30;
+  } catch(e) { console.error('QR poll error', e); }
+}
+
+function startCountdown() {
+  if (qrInterval) clearInterval(qrInterval);
+  qrInterval = setInterval(() => {
+    qrCountdownVal--;
+    const el = document.getElementById('qrCountdown');
+    if (el) el.textContent = qrCountdownVal;
+    if (qrCountdownVal <= 0) pollToken();
+  }, 1000);
+}
+
+async function selfCheckin() {
+  const btn = document.getElementById('btnSelfCheckin');
+  const msg = document.getElementById('checkinMsg');
+  if (!window._qrToken) { msg.innerHTML = '<span class="text-danger">QR belum siap, tunggu sebentar.</span>'; return; }
+  btn.disabled = true;
+  const fd = new FormData();
+  fd.append('csrf_token', CSRF);
+  fd.append('token', window._qrToken);
+  fd.append('course_id', COURSE_ID);
+  try {
+    const res = await fetch(CHECKIN_URL, { method:'POST', body: fd });
+    const data = await res.json();
+    msg.innerHTML = data.success
+      ? '<span class="text-success">' + data.message + ' Memuat halaman tugas...</span>'
+      : '<span class="text-danger">' + data.message + '</span>';
+    if (data.success) setTimeout(() => location.reload(), 900);
+    else btn.disabled = false;
+  } catch(e) {
+    msg.innerHTML = '<span class="text-danger">Gagal menghubungi server.</span>';
+    btn.disabled = false;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => { pollToken().then(startCountdown); });
+</script>
+{% else %}
+<script>
+const dz = document.getElementById('dropZone');
+if(dz) {
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('border-primary'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('border-primary'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('border-primary');
+    const file = e.dataTransfer.files[0];
+    if(file) showFileInfo(file);
+  });
+  document.getElementById('fileInput').addEventListener('change', function() {
+    if(this.files[0]) showFileInfo(this.files[0]);
+  });
+}
+function showFileInfo(file) {
+  const info = document.getElementById('fileInfo');
+  info.innerHTML = `<div class="alert alert-success py-2"><i class="bi bi-file-earmark-check me-2"></i><strong>${file.name}</strong> (${(file.size/1024/1024).toFixed(2)} MB)</div>`;
+  info.classList.remove('d-none');
+}
+
+const dzRev = document.getElementById('dropZoneRev');
+if (dzRev) {
+  dzRev.addEventListener('dragover', e => { e.preventDefault(); dzRev.classList.add('border-warning'); });
+  dzRev.addEventListener('dragleave', () => dzRev.classList.remove('border-warning'));
+  dzRev.addEventListener('drop', e => {
+    e.preventDefault();
+    dzRev.classList.remove('border-warning');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      document.getElementById('fileInputRev').files = e.dataTransfer.files;
+      showFileInfoRev(file);
+    }
+  });
+  document.getElementById('fileInputRev').addEventListener('change', function() {
+    if (this.files[0]) showFileInfoRev(this.files[0]);
+  });
+}
+function showFileInfoRev(file) {
+  const info = document.getElementById('fileInfoRev');
+  info.innerHTML = `<div class="alert alert-warning py-2"><i class="bi bi-file-earmark-check me-2"></i><strong>${file.name}</strong> (${(file.size/1024/1024).toFixed(2)} MB)</div>`;
+  info.classList.remove('d-none');
+}
+</script>
+{% endif %}
+{% endblock %}

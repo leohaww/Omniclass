@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block title %}Ajukan Izin — OmniClass{% endblock %}
+{% block page_title %}Pengajuan Izin / Sakit{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">
+        <h6 class="mb-0 fw-600"><i class="bi bi-file-earmark-medical-fill me-2 text-info"></i>Form Pengajuan Perizinan</h6>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-info mb-4">
+          <i class="bi bi-info-circle-fill me-2"></i>
+          Pengajuan akan dikirim ke dosen mata kuliah untuk disetujui. Siapkan dokumen pendukung (surat dokter, surat keterangan, dll).
+        </div>
+        <form method="POST" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-500">Jenis Pengajuan <span class="text-danger">*</span></label>
+              <select name="type" class="form-select" required>
+                <option value="izin">📋 Izin (Urusan Pribadi)</option>
+                <option value="sakit">🏥 Sakit</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500">Tanggal Tidak Hadir <span class="text-danger">*</span></label>
+              <input type="date" name="request_date" class="form-control" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-500">Mata Kuliah <span class="text-danger">*</span></label>
+              <select name="course_id" class="form-select" required>
+                <option value="">-- Pilih Mata Kuliah --</option>
+                {% for course in courses %}
+                <option value="{{ course.id }}">{{ course.code }} — {{ course.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-500">Alasan / Keterangan <span class="text-danger">*</span></label>
+              <textarea name="reason" class="form-control" rows="4"
+                        placeholder="Jelaskan alasan ketidakhadiran secara rinci..." required></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-500">Upload Dokumen Pendukung</label>
+              <input type="file" name="document" class="form-control"
+                     accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+              <div class="form-text">Surat dokter, surat keterangan, dll. Format: PDF, JPG, PNG, Word</div>
+            </div>
+            <div class="col-12">
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                  <i class="bi bi-send-fill me-2"></i>Kirim Pengajuan
+                </button>
+                <a href="{{ url_for('student.attendance') }}" class="btn btn-outline-secondary">Batal</a>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

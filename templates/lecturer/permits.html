@@ -1,0 +1,259 @@
+{% extends 'base.html' %}
+{% block title %}Perizinan — OmniClass{% endblock %}
+{% block page_title %}Manajemen Perizinan{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="stat-card stat-card-orange">
+      <div class="stat-icon"><i class="bi bi-hourglass-split"></i></div>
+      <div class="stat-value">{{ permits|selectattr('status','eq','pending')|list|length }}</div>
+      <div class="stat-label">Menunggu Review</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card stat-card-green">
+      <div class="stat-icon"><i class="bi bi-check-circle-fill"></i></div>
+      <div class="stat-value">{{ permits|selectattr('status','eq','approved')|list|length }}</div>
+      <div class="stat-label">Disetujui</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card stat-card-blue">
+      <div class="stat-icon"><i class="bi bi-x-circle-fill"></i></div>
+      <div class="stat-value">{{ permits|selectattr('status','eq','rejected')|list|length }}</div>
+      <div class="stat-label">Ditolak</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 fw-600"><i class="bi bi-file-earmark-check-fill me-2 text-primary"></i>Pengajuan Perizinan</h6>
+    <div class="btn-group btn-group-sm">
+      <button class="btn btn-outline-secondary active" onclick="filterPermits('all')">Semua</button>
+      <button class="btn btn-outline-secondary" onclick="filterPermits('pending')">Pending</button>
+      <button class="btn btn-outline-secondary" onclick="filterPermits('approved')">Disetujui</button>
+    </div>
+  </div>
+  <div class="list-group list-group-flush" id="permitList">
+    {% for permit in permits %}
+    <div class="list-group-item px-3 py-3" data-status="{{ permit.status }}">
+      <div class="d-flex justify-content-between align-items-start">
+        <div class="d-flex gap-3">
+          <img src="{{ permit.student.avatar_url }}" class="rounded-circle mt-1" width="40" height="40">
+          <div>
+            <div class="fw-600 mb-1">{{ permit.student.full_name }}</div>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+              <span class="badge bg-{{ 'warning' if permit.type == 'izin' else 'info' }}-soft text-{{ 'warning' if permit.type == 'izin' else 'info' }}">
+                {{ '📋 Izin' if permit.type == 'izin' else '🏥 Sakit' }}
+              </span>
+              <span class="text-muted small"><i class="bi bi-book me-1"></i>{{ permit.course.name }}</span>
+              <span class="text-muted small"><i class="bi bi-calendar me-1"></i>{{ permit.request_date.strftime('%d %b %Y') }}</span>
+            </div>
+            <p class="text-muted small mb-0">{{ permit.reason }}</p>
+            {% if permit.document_url %}
+            <span class="badge bg-primary-soft text-primary mt-1"><i class="bi bi-paperclip me-1"></i>Ada Lampiran</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="text-end ms-3">
+          <span class="badge bg-{{ 'warning' if permit.status == 'pending' else 'success' if permit.status == 'approved' else 'danger' }}-soft text-{{ 'warning' if permit.status == 'pending' else 'success' if permit.status == 'approved' else 'danger' }} mb-2 d-block">
+            {{ permit.status | title }}
+          </span>
+          <button class="btn btn-sm btn-outline-primary me-1"
+                  onclick='showPermitDetail({{ {
+                    "student_name": permit.student.full_name,
+                    "avatar": permit.student.avatar_url,
+                    "nim": permit.student.nip_nim or permit.student.username,
+                    "type": permit.type,
+                    "course": permit.course.name,
+                    "date": permit.request_date.strftime("%d %B %Y"),
+                    "reason": permit.reason,
+                    "document_url": permit.document_url,
+                    "status": permit.status,
+                    "review_notes": permit.review_notes or "",
+                    "id": permit.id
+                  } | tojson }})' title="Lihat Detail">
+            <i class="bi bi-eye"></i>
+          </button>
+          {% if permit.status == 'pending' %}
+          <button class="btn btn-sm btn-outline-success me-1" onclick="reviewPermit({{ permit.id }}, 'approve')">
+            <i class="bi bi-check2"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-danger" onclick="reviewPermit({{ permit.id }}, 'reject')">
+            <i class="bi bi-x"></i>
+          </button>
+          {% else %}
+          <small class="text-muted d-block mt-1">{{ permit.reviewed_at.strftime('%d %b') if permit.reviewed_at else '' }}</small>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-inbox display-3 d-block mb-3"></i>
+      <p>Tidak ada pengajuan perizinan</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ═══ Modal: Detail Perizinan (dengan bukti foto/dokumen) ═══ -->
+<div class="modal fade" id="modalPermitDetail" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content" style="border-radius:18px;border:none;overflow:hidden">
+      <div class="modal-header" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff">
+        <h6 class="modal-title fw-700 mb-0"><i class="bi bi-file-earmark-medical-fill me-2"></i>Detail Pengajuan Izin</h6>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="permitDetailBody"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Lightbox untuk perbesar foto bukti ═══ -->
+<div class="modal fade" id="lightboxModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content bg-transparent border-0">
+      <button class="btn-close btn-close-white ms-auto mb-2" data-bs-dismiss="modal" style="z-index:10"></button>
+      <img id="lightboxImg" src="" class="img-fluid rounded-4 shadow-lg mx-auto d-block" style="max-height:85vh">
+    </div>
+  </div>
+</div>
+
+<!-- Review Modal -->
+<div class="modal fade" id="reviewModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-600" id="reviewModalTitle">Review Perizinan</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="reviewForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" id="reviewAction">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Catatan (opsional)</label>
+            <textarea name="notes" class="form-control" rows="3" placeholder="Catatan untuk mahasiswa..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn" id="reviewSubmitBtn">Konfirmasi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fileKindOf(url) {
+  const ext = (url.split('.').pop() || '').toLowerCase();
+  if (['png','jpg','jpeg','gif','webp','bmp'].includes(ext)) return 'image';
+  if (ext === 'pdf') return 'pdf';
+  return 'document';
+}
+
+function showPermitDetail(p) {
+  const typeBadge = p.type === 'izin'
+    ? '<span class="badge bg-warning-soft text-warning">📋 Izin</span>'
+    : '<span class="badge bg-info-soft text-info">🏥 Sakit</span>';
+  const statusBadge = p.status === 'pending'
+    ? '<span class="badge bg-warning-soft text-warning">Menunggu Review</span>'
+    : p.status === 'approved'
+    ? '<span class="badge bg-success-soft text-success">Disetujui</span>'
+    : '<span class="badge bg-danger-soft text-danger">Ditolak</span>';
+
+  let attachmentHtml = '<div class="text-center text-muted py-4 bg-light rounded-4"><i class="bi bi-file-earmark-x display-5 d-block mb-2"></i>Tidak ada dokumen/foto bukti dilampirkan.</div>';
+  if (p.document_url) {
+    const kind = fileKindOf(p.document_url);
+    if (kind === 'image') {
+      attachmentHtml = `
+        <div class="rounded-4 overflow-hidden border position-relative" style="cursor:zoom-in" onclick="openLightbox('${p.document_url}')">
+          <img src="${p.document_url}" class="w-100" style="max-height:340px;object-fit:contain;background:#f8fafc">
+          <div class="position-absolute bottom-0 end-0 m-2 badge bg-dark bg-opacity-75"><i class="bi bi-zoom-in me-1"></i>Klik untuk perbesar</div>
+        </div>`;
+    } else if (kind === 'pdf') {
+      attachmentHtml = `
+        <div class="d-flex align-items-center gap-3 p-3 rounded-4 border bg-light">
+          <i class="bi bi-file-earmark-pdf-fill text-danger" style="font-size:2.4rem"></i>
+          <div class="flex-grow-1">
+            <div class="fw-600">Dokumen PDF Bukti</div>
+            <div class="text-muted small">Klik untuk membuka di tab baru</div>
+          </div>
+          <a href="${p.document_url}" target="_blank" class="btn btn-sm btn-primary"><i class="bi bi-box-arrow-up-right me-1"></i>Buka</a>
+        </div>`;
+    } else {
+      attachmentHtml = `
+        <div class="d-flex align-items-center gap-3 p-3 rounded-4 border bg-light">
+          <i class="bi bi-file-earmark-text-fill text-primary" style="font-size:2.4rem"></i>
+          <div class="flex-grow-1">
+            <div class="fw-600">Dokumen Bukti</div>
+            <div class="text-muted small">Klik untuk mengunduh</div>
+          </div>
+          <a href="${p.document_url}" target="_blank" download class="btn btn-sm btn-primary"><i class="bi bi-download me-1"></i>Unduh</a>
+        </div>`;
+    }
+  }
+
+  document.getElementById('permitDetailBody').innerHTML = `
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <img src="${p.avatar}" class="rounded-circle" width="52" height="52">
+      <div>
+        <div class="fw-700 fs-6">${p.student_name}</div>
+        <div class="text-muted small">${p.nim}</div>
+      </div>
+      <div class="ms-auto text-end">${statusBadge}</div>
+    </div>
+    <div class="row g-2 small mb-3">
+      <div class="col-6"><span class="text-muted">Jenis:</span> ${typeBadge}</div>
+      <div class="col-6"><span class="text-muted">Tanggal:</span> <strong>${p.date}</strong></div>
+      <div class="col-12"><span class="text-muted">Mata Kuliah:</span> <strong>${p.course}</strong></div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label small fw-600">Alasan Ketidakhadiran</label>
+      <div class="bg-light p-3 rounded-4" style="white-space:pre-wrap">${p.reason}</div>
+    </div>
+    <div class="mb-2">
+      <label class="form-label small fw-600">Bukti Foto / Dokumen</label>
+      ${attachmentHtml}
+    </div>
+    ${p.review_notes ? `<div class="mt-3"><label class="form-label small fw-600">Catatan Dosen</label><div class="bg-success-soft text-success p-2 rounded-4 small">${p.review_notes}</div></div>` : ''}
+    ${p.status === 'pending' ? `
+    <div class="d-flex gap-2 mt-4">
+      <button class="btn btn-success flex-fill" data-bs-dismiss="modal" onclick="reviewPermit(${p.id}, 'approve')"><i class="bi bi-check2-circle me-2"></i>Setujui</button>
+      <button class="btn btn-outline-danger flex-fill" data-bs-dismiss="modal" onclick="reviewPermit(${p.id}, 'reject')"><i class="bi bi-x-circle me-2"></i>Tolak</button>
+    </div>` : ''}
+  `;
+  new bootstrap.Modal(document.getElementById('modalPermitDetail')).show();
+}
+
+function openLightbox(url) {
+  document.getElementById('lightboxImg').src = url;
+  new bootstrap.Modal(document.getElementById('lightboxModal')).show();
+}
+
+function filterPermits(status) {
+  document.querySelectorAll('#permitList .list-group-item[data-status]').forEach(el => {
+    el.style.display = (status === 'all' || el.dataset.status === status) ? '' : 'none';
+  });
+  document.querySelectorAll('.btn-group .btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+function reviewPermit(permitId, action) {
+  const form = document.getElementById('reviewForm');
+  form.action = `/lecturer/permits/${permitId}/review`;
+  document.getElementById('reviewAction').value = action;
+  document.getElementById('reviewModalTitle').textContent = action === 'approve' ? 'Setujui Perizinan' : 'Tolak Perizinan';
+  const btn = document.getElementById('reviewSubmitBtn');
+  btn.className = `btn btn-${action === 'approve' ? 'success' : 'danger'}`;
+  btn.textContent = action === 'approve' ? 'Setujui' : 'Tolak';
+  new bootstrap.Modal(document.getElementById('reviewModal')).show();
+}
+</script>
+{% endblock %}

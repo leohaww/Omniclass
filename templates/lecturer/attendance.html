@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% block title %}Absensi — OmniClass{% endblock %}
+{% block page_title %}Manajemen Absensi{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- Course Selector -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body p-3">
+        <form method="GET" class="d-flex flex-wrap gap-3 align-items-end">
+          <div class="flex-grow-1" style="min-width:200px">
+            <label class="form-label fw-500 mb-1 small">Pilih Mata Kuliah</label>
+            <select name="course_id" class="form-select" onchange="this.form.submit()">
+              <option value="">-- Pilih Mata Kuliah --</option>
+              {% for course in courses %}
+              <option value="{{ course.id }}" {% if selected_course and selected_course.id == course.id %}selected{% endif %}>
+                {{ course.code }} — {{ course.name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          {% if selected_course %}
+          <form method="POST" action="{{ url_for('lecturer.start_session') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="course_id" value="{{ selected_course.id }}">
+            <div class="d-flex gap-2">
+              <input type="text" name="topic" class="form-control" placeholder="Topik pertemuan..." style="min-width:180px">
+              <select name="method" class="form-select" style="width:140px">
+                <option value="qr_code">QR Code</option>
+                <option value="geofence">Geofencing</option>
+                <option value="ip_lock">IP Lock</option>
+                <option value="manual">Manual</option>
+              </select>
+              <button class="btn btn-success">
+                <i class="bi bi-play-fill me-1"></i>Mulai Sesi
+              </button>
+            </div>
+          </form>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {% if selected_course %}
+  <!-- Attendance Sessions List -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600">Riwayat Sesi — {{ selected_course.name }}</h6>
+        <span class="badge bg-primary">{{ sessions|length }} sesi</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-head">
+            <tr>
+              <th>Pertemuan</th>
+              <th>Tanggal</th>
+              <th>Topik</th>
+              <th>Metode</th>
+              <th>Hadir</th>
+              <th>Alfa</th>
+              <th>Status</th>
+              <th class="text-end">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for sess in sessions %}
+            <tr>
+              <td><span class="badge bg-primary rounded-pill">#{{ sess.meeting_number }}</span></td>
+              <td>{{ sess.session_date.strftime('%d %b %Y') }}</td>
+              <td>{{ sess.topic or '—' }}</td>
+              <td>
+                <span class="badge bg-secondary-soft text-secondary">
+                  {% if sess.method == 'qr_code' %}<i class="bi bi-qr-code me-1"></i>QR Code
+                  {% elif sess.method == 'geofence' %}<i class="bi bi-geo-alt me-1"></i>Geofencing
+                  {% elif sess.method == 'ip_lock' %}<i class="bi bi-wifi me-1"></i>IP Lock
+                  {% else %}<i class="bi bi-pencil me-1"></i>Manual{% endif %}
+                </span>
+              </td>
+              <td><span class="fw-600 text-success">{{ sess.present_count }}</span></td>
+              <td><span class="fw-600 text-danger">{{ sess.absent_count }}</span></td>
+              <td>
+                <span class="badge {% if sess.is_open %}bg-success{% else %}bg-secondary{% endif %}">
+                  {{ 'Berlangsung' if sess.is_open else 'Selesai' }}
+                </span>
+              </td>
+              <td class="text-end">
+                <a href="{{ url_for('lecturer.attendance_session', sid=sess.id) }}"
+                   class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-eye-fill me-1"></i>{{ 'Live' if sess.is_open else 'Detail' }}
+                </a>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center py-5 text-muted">Belum ada sesi absensi</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="col-12 text-center py-5 text-muted">
+    <i class="bi bi-calendar-check display-3 d-block mb-3"></i>
+    <p>Pilih mata kuliah untuk melihat riwayat absensi</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

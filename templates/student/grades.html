@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+{% block title %}Nilai Saya — OmniClass{% endblock %}
+{% block page_title %}Transkrip Nilai{% endblock %}
+
+{% block content %}
+<!-- GPA Summary -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="stat-card stat-card-purple text-center">
+      <div class="stat-icon mx-auto"><i class="bi bi-trophy-fill"></i></div>
+      <div class="stat-value">{{ gpa }}</div>
+      <div class="stat-label">Indeks Prestasi Kumulatif</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card stat-card-blue text-center">
+      <div class="stat-icon mx-auto"><i class="bi bi-book-fill"></i></div>
+      <div class="stat-value">{{ total_credits }}</div>
+      <div class="stat-label">Total SKS Ditempuh</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card stat-card-green text-center">
+      <div class="stat-icon mx-auto"><i class="bi bi-patch-check-fill"></i></div>
+      <div class="stat-value">{{ grade_data|selectattr('grade')|selectattr('grade.is_final')|list|length }}</div>
+      <div class="stat-label">Nilai Final</div>
+    </div>
+  </div>
+</div>
+
+<!-- Grade Table -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 fw-600"><i class="bi bi-table me-2 text-primary"></i>Tabel Nilai per Mata Kuliah</h6>
+    <button class="btn btn-sm btn-outline-primary" onclick="window.print()">
+      <i class="bi bi-printer me-1"></i>Cetak Transkrip
+    </button>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-head">
+        <tr>
+          <th>Mata Kuliah</th>
+          <th class="text-center">SKS</th>
+          <th class="text-center">Tugas</th>
+          <th class="text-center">Kuis</th>
+          <th class="text-center">UTS</th>
+          <th class="text-center">UAS</th>
+          <th class="text-center">Kehadiran</th>
+          <th class="text-center">Total</th>
+          <th class="text-center">Nilai</th>
+          <th class="text-center">Mutu</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in grade_data %}
+        <tr>
+          <td>
+            <div class="fw-500 small">{{ item.course.name }}</div>
+            <div class="text-muted" style="font-size:.7rem">{{ item.course.code }}</div>
+          </td>
+          <td class="text-center"><span class="badge bg-primary-soft text-primary">{{ item.course.credits }}</span></td>
+          {% if item.grade %}
+            <td class="text-center"><small>{{ item.grade.assignment_score or '—' }}</small></td>
+            <td class="text-center"><small>{{ item.grade.quiz_score or '—' }}</small></td>
+            <td class="text-center"><small>{{ item.grade.midterm_score or '—' }}</small></td>
+            <td class="text-center"><small>{{ item.grade.final_score or '—' }}</small></td>
+            <td class="text-center"><small>{{ item.grade.attendance_score or '—' }}</small></td>
+            <td class="text-center">
+              {% if item.grade.total_score %}
+              <div class="progress mx-auto" style="height:6px;width:60px">
+                <div class="progress-bar bg-{{ 'success' if item.grade.total_score >= 70 else 'warning' if item.grade.total_score >= 55 else 'danger' }}"
+                     style="width:{{ item.grade.total_score }}%"></div>
+              </div>
+              <small class="fw-600">{{ item.grade.total_score }}</small>
+              {% else %}<small class="text-muted">—</small>{% endif %}
+            </td>
+            <td class="text-center">
+              {% if item.grade.letter_grade %}
+              <span class="badge grade-badge grade-{{ item.grade.letter_grade }}">{{ item.grade.letter_grade }}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-center">
+              <strong class="{{ 'text-success' if item.grade.gpa_points and item.grade.gpa_points >= 3.0 else 'text-warning' if item.grade.gpa_points and item.grade.gpa_points >= 2.0 else 'text-danger' }}">
+                {{ item.grade.gpa_points or '—' }}
+              </strong>
+            </td>
+          {% else %}
+            <td colspan="8" class="text-center text-muted small">Nilai belum tersedia</td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="10" class="text-center py-5 text-muted">Belum ada data nilai</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if grade_data %}
+      <tfoot class="table-light fw-600">
+        <tr>
+          <td colspan="2">Total</td>
+          <td colspan="6"></td>
+          <td class="text-center">IPK</td>
+          <td class="text-center text-primary fs-6">{{ gpa }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+
+<!-- Grade Legend -->
+<div class="card mt-4">
+  <div class="card-body py-3">
+    <h6 class="fw-600 mb-3 small text-muted">SKALA PENILAIAN</h6>
+    <div class="d-flex flex-wrap gap-2">
+      {% for letter, gpa_p, min_s in [('A', 4.0, 85), ('A-', 3.7, 80), ('B+', 3.3, 75), ('B', 3.0, 70), ('B-', 2.7, 65), ('C+', 2.3, 60), ('C', 2.0, 55), ('D', 1.0, 45), ('E', 0.0, 0)] %}
+      <div class="text-center px-2">
+        <span class="badge grade-badge grade-{{ letter }} d-block mb-1">{{ letter }}</span>
+        <div style="font-size:.65rem" class="text-muted">{{ gpa_p }}</div>
+        <div style="font-size:.6rem" class="text-muted">&ge;{{ min_s }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Notifikasi — OmniClass{% endblock %}
+{% block page_title %}Notifikasi{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600">Semua Notifikasi</h6>
+        <span class="badge bg-primary">{{ notifications|length }}</span>
+      </div>
+      <div class="list-group list-group-flush">
+        {% for notif in notifications %}
+        <div class="list-group-item list-group-item-action {% if not notif.is_read %}bg-primary-soft{% endif %}">
+          <div class="d-flex gap-3">
+            <div class="notif-icon-wrap bg-{{ notif.type }}-soft text-{{ notif.type }} rounded-circle p-2" style="min-width:40px;height:40px;display:flex;align-items:center;justify-content:center">
+              <i class="bi bi-bell-fill"></i>
+            </div>
+            <div class="flex-grow-1">
+              <div class="d-flex justify-content-between">
+                <strong class="small">{{ notif.title }}</strong>
+                <small class="text-muted">{{ notif.time_ago }}</small>
+              </div>
+              <p class="mb-0 small text-muted">{{ notif.message }}</p>
+              {% if notif.link %}
+              <a href="{{ notif.link }}" class="btn btn-link btn-sm px-0 mt-1">Lihat detail →</a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi bi-bell-slash display-4 d-block mb-3"></i>
+          <p>Tidak ada notifikasi</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

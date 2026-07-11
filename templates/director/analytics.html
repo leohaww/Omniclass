@@ -1,0 +1,336 @@
+{% extends 'base.html' %}
+{% block title %}Analitik — OmniClass{% endblock %}
+{% block page_title %}Analitik & Early Warning System{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* Kustomisasi gaya untuk visualisasi data yang elegan */
+  .card {
+    border: 1px solid rgba(226,232,240,.9);
+    border-radius: 14px;
+    box-shadow: 0 12px 30px rgba(2,6,23,.04);
+    transition: transform 0.2s, box-shadow 0.2s;
+    overflow: hidden;
+    background: rgba(255,255,255,.92);
+  }
+  .card:hover {
+    box-shadow: 0 16px 40px rgba(2,6,23,.06);
+    transform: translateY(-2px);
+  }
+  .card-header {
+    background-color: transparent;
+    border-bottom: 1px solid rgba(241,245,249,1);
+    padding: 1rem 1.25rem;
+  }
+  .bg-warning-soft {
+    background-color: #fffbeb !important;
+    color: #d97706 !important;
+  }
+  .bg-danger-soft {
+    background-color: #fef2f2 !important;
+    color: #dc2626 !important;
+  }
+  .table-head th {
+    background-color: #f8fafc;
+    color: #64748b;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1rem;
+  }
+
+  /* Mengunci rasio tinggi grafik agar tidak hancur saat responsif mobile */
+  .chart-container-doughnut {
+    position: relative;
+    width: 100%;
+    height: 280px;
+  }
+  .chart-container-bar {
+    position: relative;
+    width: 100%;
+    height: 320px;
+  }
+  .chart-container-line {
+    position: relative;
+    width: 100%;
+    height: 200px;
+  }
+
+  @media (max-width: 575.98px) {
+    .chart-container-doughnut { height: 240px; }
+    .chart-container-bar { height: 260px; }
+    .chart-container-line { height: 180px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Grade Distribution + Course Attendance -->
+<div class="row g-4 mb-4">
+  <div class="col-12 col-xl-5">
+    <div class="card h-100">
+      <div class="card-header d-flex align-items-center justify-content-between gap-2">
+        <h6 class="mb-0 fw-600"><i class="bi bi-pie-chart-fill me-2 text-primary"></i>Distribusi Nilai</h6>
+        <span class="text-muted small d-none d-md-inline">Ringkasan capaian</span>
+      </div>
+      <div class="card-body d-flex align-items-center justify-content-center">
+        <div class="chart-container-doughnut">
+          <canvas id="gradeChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-7">
+    <div class="card h-100">
+      <div class="card-header d-flex align-items-center justify-content-between gap-2">
+        <h6 class="mb-0 fw-600"><i class="bi bi-bar-chart-fill me-2 text-success"></i>Kehadiran per Mata Kuliah</h6>
+        <span class="text-muted small d-none d-md-inline">Persentase kehadiran</span>
+      </div>
+      <div class="card-body">
+        <div class="chart-container-bar">
+          <canvas id="courseAttChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- At-Risk Detail Table -->
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2" style="background:linear-gradient(135deg, rgba(245,158,11,.12), rgba(239,68,68,.06)); border-bottom:1px solid rgba(15,23,42,.06);">
+    <h6 class="mb-0 fw-600">
+      <i class="bi bi-exclamation-triangle-fill me-2 text-warning"></i>
+      Early Warning System — Mahasiswa Berisiko
+    </h6>
+    <button class="btn btn-sm" style="background:rgba(245,158,11,.10); border:1px solid rgba(245,158,11,.30); color:#92400e;">
+      <i class="bi bi-download me-1"></i>Export PDF
+    </button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-head">
+        <tr>
+          <th>Mahasiswa</th>
+          <th>Faktor Risiko</th>
+          <th>Risk Score</th>
+          <th>Rekomendasi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in at_risk %}
+        <tr>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <img src="{{ item.student.avatar_url or url_for('static', filename='img/default-avatar.png') }}" class="rounded-circle shadow-sm" width="34" height="34" style="object-fit: cover;">
+              <div>
+                <div class="fw-600 text-dark">{{ item.student.full_name }}</div>
+                <small class="text-muted">{{ item.student.nip_nim or '—' }}</small>
+              </div>
+            </div>
+          </td>
+          <td>
+            {% for reason in item.reasons %}
+            <span class="badge bg-warning-soft me-1 mb-1 px-2.5 py-1.5 rounded">{{ reason }}</span>
+            {% endfor %}
+          </td>
+          <td>
+            <div class="d-flex align-items-center gap-3" style="min-width: 130px;">
+              <div class="progress flex-grow-1" style="height:6px; background-color: #f1f5f9;">
+                <div class="progress-bar bg-{{ 'danger' if item.risk_score >= 3 else 'warning' }}"
+                     style="width:{{ [item.risk_score * 20, 100]|min }}%; border-radius: 3px;"></div>
+              </div>
+              <strong class="text-{{ 'danger' if item.risk_score >= 3 else 'warning' }}">{{ item.risk_score }}</strong>
+            </div>
+          </td>
+          <td>
+            <span class="badge {{ 'bg-danger-soft' if item.risk_score >= 3 else 'bg-warning-soft' }} px-2 py-1 small fw-600">
+              {% if item.risk_score >= 3 %}Segera hubungi pembimbing akademik
+              {% else %}Pantau perkembangan{% endif %}
+            </span>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="text-center py-5 text-muted">
+            <i class="bi bi-check-circle-fill text-success fs-1 d-block mb-2"></i>
+            Tidak ada mahasiswa berisiko saat ini
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Monthly Trend -->
+<div class="card mb-4">
+  <div class="card-header" style="background:linear-gradient(135deg, rgba(79,70,229,.10), rgba(124,58,237,.06));">
+    <h6 class="mb-0 fw-600"><i class="bi bi-graph-up-arrow me-2 text-primary"></i>Tren Pertumbuhan Mahasiswa</h6>
+  </div>
+  <div class="card-body">
+    <div class="chart-container-line">
+      <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  // 1. Grade Distribution Chart
+  // NOTE: grade_dist dari SQLAlchemy query menghasilkan list[Row] -> tidak bisa tojson langsung.
+  const gradeDist = [
+    {% if grade_dist is defined %}
+      {% for row in grade_dist %}
+        [{{ row[0] | tojson }}, {{ row[1] | int }}]{% if not loop.last %},{% endif %}
+      {% endfor %}
+    {% endif %}
+  ];
+
+  const gradeLabels = gradeDist.length ? gradeDist.map(d => d[0]) : ['A','B','C','D','E'];
+  const gradeCounts = gradeDist.length ? gradeDist.map(d => d[1]) : [0,0,0,0,0];
+  const gradeColors = ['#22c55e','#84cc16','#eab308','#f97316','#ef4444','#8b5cf6','#06b6d4','#ec4899','#6b7280','#14b8a6'];
+
+  const gradeCanvas = document.getElementById('gradeChart');
+  if (gradeCanvas) {
+    new Chart(gradeCanvas, {
+      type: 'doughnut',
+      data: {
+        labels: gradeLabels,
+        datasets: [{
+          data: gradeCounts,
+          backgroundColor: gradeColors.slice(0, gradeCounts.length),
+          borderWidth: 2,
+          borderColor: '#fff',
+          hoverOffset: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: window.innerWidth < 768 ? 'bottom' : 'right',
+            labels: {
+              usePointStyle: true,
+              boxWidth: 8,
+              padding: 12
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                const label = ctx.label ?? '';
+                const val = ctx.raw ?? 0;
+                return ` ${label}: ${val} Mahasiswa`;
+              }
+            }
+          }
+        },
+        cutout: '70%'
+      }
+    });
+  }
+
+  // 2. Course Attendance Chart
+  // course_att dikirim sebagai list dict, tapi biasanya berisi objek Course sebagai item 'course'
+  // -> jangan tojson langsung, ambil hanya data primitive: code + rate
+  const courseAtt = [
+    {% if course_att is defined %}
+      {% for row in course_att %}
+        [{{ row.course.code | tojson }}, {{ row.rate | float }}]{% if not loop.last %},{% endif %}
+      {% endfor %}
+    {% endif %}
+  ];
+
+  const courseCanvas = document.getElementById('courseAttChart');
+  if (courseCanvas) {
+    new Chart(courseCanvas, {
+      type: 'bar',
+      data: {
+        labels: courseAtt.map(d => d[0]),
+        datasets: [{
+          label: 'Tingkat Kehadiran (%)',
+          data: courseAtt.map(d => d[1]),
+          backgroundColor: courseAtt.map(d => (d[1] >= 75 ? '#22c55e' : d[1] >= 50 ? '#f59e0b' : '#ef4444')),
+          borderRadius: 6,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) { return ` Kehadiran: ${ctx.raw ?? 0}%`; }
+            }
+          }
+        },
+        scales: {
+          y: {
+            min: 0,
+            max: 100,
+            grid: { color: '#f1f5f9' },
+            ticks: { callback: (v) => `${v}%`, color: '#64748b' }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: '#64748b', font: { size: 11 } }
+          }
+        }
+      }
+    });
+  }
+
+  // 3. Monthly Trend Chart
+  const monthly = {{ monthly | tojson if monthly is defined else '[]' }};
+  const trendCanvas = document.getElementById('trendChart');
+  if (trendCanvas) {
+    new Chart(trendCanvas, {
+      type: 'line',
+      data: {
+        labels: monthly.map(d => d.month),
+        datasets: [{
+          label: 'Mahasiswa Baru',
+          data: monthly.map(d => d.new_students),
+          borderColor: '#4f46e5',
+          backgroundColor: 'rgba(79, 70, 229, 0.06)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          pointBackgroundColor: '#4f46e5',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) { return ` Mahasiswa Baru: ${ctx.raw ?? 0}`; }
+            }
+          }
+        },
+        scales: {
+          y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { color: '#64748b' } },
+          x: { grid: { display: false }, ticks: { color: '#64748b' } }
+        }
+      }
+    });
+  }
+});
+</script>
+{% endblock %}
+

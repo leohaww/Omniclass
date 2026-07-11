@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block title %}Buat Tugas — OmniClass{% endblock %}
+{% block page_title %}Buat Tugas Baru{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600"><i class="bi bi-clipboard2-plus-fill me-2 text-primary"></i>Form Tugas Baru</h6></div>
+      <div class="card-body">
+        <form method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="row g-3">
+            <div class="col-md-8">
+              <label class="form-label fw-500">Judul Tugas <span class="text-danger">*</span></label>
+              <input type="text" name="title" class="form-control" placeholder="Judul tugas yang jelas" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-500">Jenis <span class="text-danger">*</span></label>
+              <select name="type" class="form-select" required>
+                <option value="tugas">📝 Tugas</option>
+                <option value="kuis">📊 Kuis</option>
+                <option value="ujian">📋 Ujian</option>
+                <option value="proyek">🗂 Proyek</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500">Mata Kuliah <span class="text-danger">*</span></label>
+              <select name="course_id" class="form-select" required>
+                <option value="">-- Pilih Mata Kuliah --</option>
+                {% for course in courses %}
+                <option value="{{ course.id }}">{{ course.code }} — {{ course.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-500">Nilai Maksimal</label>
+              <input type="number" name="max_score" class="form-control" value="100" min="0" max="100">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-500">Penalti Terlambat (%/hari)</label>
+              <input type="number" name="late_penalty" class="form-control" value="10" min="0" max="100">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500">Batas Waktu <span class="text-danger">*</span></label>
+              <input type="datetime-local" name="due_date" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-500 d-block">Opsi</label>
+              <div class="d-flex flex-wrap gap-3 mt-1">
+                <div class="form-check">
+                  <input type="checkbox" name="allow_late" class="form-check-input" id="allowLate" checked>
+                  <label class="form-check-label small" for="allowLate">Izinkan terlambat</label>
+                </div>
+                <div class="form-check">
+                  <input type="checkbox" name="plagiarism_check" class="form-check-input" id="plagCheck">
+                  <label class="form-check-label small" for="plagCheck">Cek plagiarisme</label>
+                </div>
+                <div class="form-check">
+                  <input type="checkbox" name="is_proctored" class="form-check-input" id="proctored">
+                  <label class="form-check-label small" for="proctored">Mode proktor</label>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-500">Deskripsi / Instruksi</label>
+              <textarea name="description" class="form-control" rows="5" placeholder="Jelaskan instruksi tugas secara detail..."></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-500">File Lampiran (opsional)</label>
+              <input type="file" class="form-control" accept=".pdf,.doc,.docx,.zip">
+              <div class="form-text">Format: PDF, Word, ZIP. Maks 50MB.</div>
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input type="checkbox" name="is_published" class="form-check-input" id="isPublished" checked>
+                <label class="form-check-label" for="isPublished">
+                  <strong>Terbitkan sekarang</strong> (mahasiswa dapat melihat tugas ini)
+                </label>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                  <i class="bi bi-check2-circle me-2"></i>Simpan Tugas
+                </button>
+                <a href="{{ url_for('lecturer.assignments') }}" class="btn btn-outline-secondary">Batal</a>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

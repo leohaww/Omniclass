@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}Pengumuman — OmniClass{% endblock %}
+{% block page_title %}Manajemen Pengumuman{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- Create Form -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600"><i class="bi bi-megaphone-fill me-2 text-primary"></i>Buat Pengumuman</h6></div>
+      <div class="card-body">
+        <form method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-3">
+            <label class="form-label fw-500">Judul</label>
+            <input type="text" name="title" class="form-control" placeholder="Judul pengumuman..." required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-500">Konten</label>
+            <textarea name="content" class="form-control" rows="5" placeholder="Isi pengumuman..." required></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-500">Target Penerima</label>
+            <select name="target" class="form-select">
+              <option value="all">Semua Pengguna</option>
+              <option value="lecturers">Dosen</option>
+              <option value="students">Mahasiswa</option>
+              <option value="directors">Direktur</option>
+            </select>
+          </div>
+          <div class="mb-3 form-check">
+            <input type="checkbox" name="is_pinned" class="form-check-input" id="isPinned">
+            <label class="form-check-label" for="isPinned">
+              <i class="bi bi-pin-fill text-warning me-1"></i>Sematkan di atas
+            </label>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="bi bi-send-fill me-2"></i>Terbitkan
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- List -->
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600">Daftar Pengumuman</h6></div>
+      <div class="list-group list-group-flush">
+        {% for ann in announcements %}
+        <div class="list-group-item px-3 py-3">
+          <div class="d-flex justify-content-between align-items-start">
+            <div class="flex-grow-1">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                {% if ann.is_pinned %}
+                <i class="bi bi-pin-fill text-warning"></i>
+                {% endif %}
+                <strong>{{ ann.title }}</strong>
+                <span class="badge bg-primary-soft text-primary small">{{ ann.target | title }}</span>
+              </div>
+              <p class="mb-1 text-muted small" style="line-height:1.5">{{ ann.content[:150] }}{% if ann.content|length > 150 %}...{% endif %}</p>
+              <small class="text-muted">
+                <i class="bi bi-person me-1"></i>{{ ann.author.full_name }}
+                · <i class="bi bi-clock me-1"></i>{{ ann.created_at.strftime('%d %b %Y, %H:%M') }}
+              </small>
+            </div>
+            <div class="ms-3 d-flex gap-1">
+              <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil-fill"></i></button>
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash-fill"></i></button>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi bi-megaphone display-3 d-block mb-3"></i>
+          <p>Belum ada pengumuman</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

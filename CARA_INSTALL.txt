@@ -1,0 +1,99 @@
+══════════════════════════════════════════════════════════════════
+  OmniClass — CARA INSTALL & KONEKSI DATA ANTAR ROLE
+  Python 3.x + XAMPP MySQL + Windows/Linux/Mac
+══════════════════════════════════════════════════════════════════
+
+LANGKAH 1 — Install Dependencies
+──────────────────────────────────
+pip install Flask Flask-SQLAlchemy Flask-Login Flask-WTF Flask-Migrate PyMySQL python-dotenv Werkzeug WTForms openpyxl bleach qrcode pypng
+
+LANGKAH 2 — Buat File .env
+──────────────────────────────
+Buat file .env di folder OmniClass2 dengan isi:
+
+  SECRET_KEY=omniclass-secret-ganti-ini
+  DB_HOST=localhost
+  DB_PORT=3306
+  DB_USER=root
+  DB_PASSWORD=
+  DB_NAME=omniclass_db
+  APP_NAME=OmniClass
+
+LANGKAH 3 — Buat Database MySQL
+──────────────────────────────────
+Buka phpMyAdmin atau Command Prompt:
+
+  mysql -u root -p
+  CREATE DATABASE omniclass_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+  EXIT;
+
+LANGKAH 4 — Isi Data Demo
+──────────────────────────────
+  python seed.py
+
+LANGKAH 5 — Jalankan
+──────────────────────────────
+  python app.py
+  Buka: http://localhost:5000
+
+══════════════════════════════════════════════════════════════════
+  AKUN DEMO
+══════════════════════════════════════════════════════════════════
+  🏢 Direktur  :  director@demo.id  /  demo123
+  👨‍🏫 Dosen 1  :  dosen@demo.id     /  demo123
+  👨‍🏫 Dosen 2  :  budi@demo.id      /  demo123
+  🎓 Siswa 1  :  siswa@demo.id     /  demo123
+  🎓 Siswa 2  :  dewi@demo.id      /  demo123
+══════════════════════════════════════════════════════════════════
+
+ALUR KONEKSI DATA 3 ROLE (OTOMATIS)
+══════════════════════════════════════════════════════════════════
+
+  DIREKTUR → SEMUA
+  ─────────────────
+  ✅ Tambah pengguna (dosen/mahasiswa)
+     → Notifikasi selamat datang ke user baru
+
+  ✅ Buat mata kuliah + tetapkan dosen
+     → Notifikasi ke dosen yang ditetapkan
+
+  ✅ Daftarkan mahasiswa ke kelas
+     → Notifikasi ke semua mahasiswa yang didaftarkan
+
+  ✅ Buat pengumuman (all/dosen/mahasiswa)
+     → Broadcast notifikasi ke semua target
+
+  ✅ Dashboard menampilkan:
+     - Sesi absensi terbaru dari dosen
+     - Pengumpulan tugas terbaru dari mahasiswa
+     - Early Warning System mahasiswa berisiko
+
+  DOSEN → MAHASISWA
+  ──────────────────
+  ✅ Buka sesi absensi QR
+     → Notifikasi ke semua mahasiswa terdaftar
+
+  ✅ Buat tugas baru
+     → Notifikasi ke semua mahasiswa terdaftar
+
+  ✅ Nilai tugas mahasiswa
+     → Notifikasi nilai ke mahasiswa
+
+  ✅ Setujui/tolak izin mahasiswa
+     → Notifikasi status ke mahasiswa
+
+  ✅ Update jadwal kelas
+     → Notifikasi ke semua mahasiswa
+
+  MAHASISWA → DOSEN
+  ──────────────────
+  ✅ Absen QR berhasil
+     → Notifikasi ke dosen (nama + waktu)
+
+  ✅ Kumpulkan tugas
+     → Notifikasi ke dosen (nama + judul tugas)
+
+  ✅ Ajukan izin/sakit
+     → Notifikasi ke dosen untuk direview
+
+══════════════════════════════════════════════════════════════════

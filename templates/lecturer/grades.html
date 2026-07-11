@@ -1,0 +1,260 @@
+{% extends 'base.html' %}
+{% block title %}Nilai — OmniClass{% endblock %}
+{% block page_title %}Manajemen Nilai{% endblock %}
+
+{% block content %}
+  <div class="grades-hero mb-3" style="background: linear-gradient(135deg, rgba(79,70,229,.14), rgba(124,58,237,.10)); padding: 18px; border-radius: 18px; border: 1px solid rgba(226,232,240,.95);">
+    <div class="row g-3 align-items-stretch">
+      <div class="col-12 col-lg-5">
+        <div class="card shadow-sm h-100 grade-panel" style="background: rgba(255,255,255,.88); border: 1px solid rgba(226,232,240,.95); backdrop-filter: blur(10px);">
+          <div class="card-body p-4">
+            <form method="GET" class="d-flex flex-column flex-sm-row gap-2 gap-sm-3 align-items-end">
+              <div class="flex-grow-1">
+                <label class="form-label small text-muted mb-1">Mata Kuliah</label>
+                <select name="course_id" class="form-select" onchange="this.form.submit()">
+                  <option value="">-- Pilih Mata Kuliah --</option>
+                  {% for course in courses %}
+                  <option value="{{ course.id }}" {% if selected_course and selected_course.id == course.id %}selected{% endif %}>
+                    {{ course.code }} — {{ course.name }}
+                  </option>
+                  {% endfor %}
+                </select>
+              </div>
+              {% if selected_course %}
+              <button type="button" class="btn btn-outline-success" onclick="exportGrades()">
+                <i class="bi bi-download me-1"></i>Export Excel
+              </button>
+              {% endif %}
+            </form>
+          </div>
+        </div>
+      </div>
+
+      {% if selected_course %}
+      <div class="col-12 col-lg-7">
+    <div class="card h-100" style="background: rgba(255,255,255,.55); border: 1px solid rgba(226,232,240,.9); backdrop-filter: blur(10px);">
+      <div class="card-body p-4">
+        <div class="d-flex align-items-start justify-content-between gap-3">
+          <div>
+            <div class="text-muted" style="font-size:.8rem">Mata Kuliah</div>
+            <div class="fw-800" style="font-size:1.35rem; letter-spacing:.2px">{{ selected_course.code }}</div>
+            <div class="text-secondary">{{ selected_course.name }}</div>
+          </div>
+          <div class="text-end">
+            <div class="badge bg-primary-soft text-primary" style="border:1px solid rgba(79,70,229,.15) !important; padding:10px 14px; border-radius:14px;">
+              <i class="bi bi-people-fill me-1"></i>
+              <span class="fw-800">{{ grade_data|length }}</span>
+              <span class="text-secondary">Mahasiswa</span>
+            </div>
+          </div>
+        </div>
+        <hr class="my-3" style="border-color: rgba(226,232,240,.9)">
+        <div class="row g-2">
+          <div class="col-6">
+            <div class="p-3 rounded-3" style="background: rgba(79,70,229,.06); border: 1px solid rgba(79,70,229,.12)">
+              <div class="text-muted small">Aksi Cepat</div>
+              <div class="fw-700">Simpan nilai massal</div>
+              <button class="btn btn-primary btn-sm mt-2" type="button" onclick="saveAllGrades()">
+                <i class="bi bi-check2-all me-1"></i>Simpan Semua
+              </button>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-3 rounded-3" style="background: rgba(34,197,94,.06); border: 1px solid rgba(34,197,94,.12)">
+              <div class="text-muted small">Ekspor</div>
+              <div class="fw-700">Unduh ke Excel</div>
+              <button class="btn btn-outline-success btn-sm mt-2" type="button" onclick="exportGrades()">
+                <i class="bi bi-download me-1"></i>Export
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="col-12">
+    <div class="card" style="border: 1px solid rgba(226,232,240,.95); overflow: hidden;">
+      <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, rgba(79,70,229,.08), rgba(124,58,237,.05)); border-bottom: 1px solid rgba(226,232,240,.9);">
+        <div class="d-flex flex-column">
+          <h6 class="mb-0 fw-700" style="letter-spacing:.2px">Nilai Mahasiswa</h6>
+          <div class="text-muted small">{{ selected_course.name }}</div>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-primary" onclick="saveAllGrades()">
+            <i class="bi bi-check2-all me-1"></i>Simpan Semua
+          </button>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="gradesTable" style="min-width: 980px;">
+          <thead class="table-head">
+            <tr>
+              <th>No</th>
+              <th>Mahasiswa</th>
+              <th class="text-center">Tugas<br><small class="fw-400 text-muted">20% <span class="badge bg-success-soft text-success" style="font-size:9px" title="Otomatis dari nilai tugas yang sudah dinilai dosen">⚡ Auto</span></small></th>
+              <th class="text-center">Kuis<br><small class="fw-400 text-muted">15%</small></th>
+              <th class="text-center">UTS<br><small class="fw-400 text-muted">25%</small></th>
+              <th class="text-center">UAS<br><small class="fw-400 text-muted">30%</small></th>
+              <th class="text-center">Kehadiran<br><small class="fw-400 text-muted">10%</small></th>
+              <th class="text-center">Total</th>
+              <th class="text-center">Nilai</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in grade_data %}
+            <tr data-student-id="{{ item.student.id }}" data-course-id="{{ selected_course.id }}">
+              <td class="text-muted small">{{ loop.index }}</td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <img src="{{ item.student.avatar_url }}" class="rounded-circle" width="30" height="30">
+                  <div>
+                    <div class="fw-500 small">{{ item.student.full_name }}</div>
+                    <div class="text-muted" style="font-size:.65rem">{{ item.student.nip_nim }}</div>
+                  </div>
+                </div>
+              </td>
+              {% set fields = ['assignment_score','quiz_score','midterm_score','final_score','attendance_score'] %}
+              {# Hindari ekspresi Jinja terlalu kompleks yang memicu TemplateSyntaxError #}
+              {% for field in fields %}
+              {% set v = 0 %}
+              {% if item.grade %}
+                {% if field == 'assignment_score' %}
+                  {% set v = item.grade.assignment_score or 0 %}
+                {% elif field == 'quiz_score' %}
+                  {% set v = item.grade.quiz_score or 0 %}
+                {% elif field == 'midterm_score' %}
+                  {% set v = item.grade.midterm_score or 0 %}
+                {% elif field == 'final_score' %}
+                  {% set v = item.grade.final_score or 0 %}
+                {% elif field == 'attendance_score' %}
+                  {% set v = item.grade.attendance_score or 0 %}
+                {% endif %}
+              {% endif %}
+              <td class="text-center">
+                <input type="number"
+                       class="form-control form-control-sm grade-input text-center mx-auto"
+                       name="{{ field }}"
+                       value="{{ v }}"
+                       min="0" max="100" step="0.5" style="width:78px">
+              </td>
+              {% endfor %}
+
+              <td class="text-center">
+                <span class="fw-700 total-score">{{ item.grade.total_score if item.grade else '—' }}</span>
+              </td>
+              <td class="text-center">
+                {% set lg = item.grade.letter_grade or 'E' %}
+                <span class="badge grade-badge grade-{{ lg }}">
+                  {{ lg if item.grade else '—' }}
+                </span>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="text-center py-5 text-muted">Belum ada mahasiswa terdaftar</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+  .grades-hero .grade-panel {
+    border: 1px solid rgba(226,232,240,.95);
+  }
+
+  /* Input grade: terlihat premium + fokus jelas */
+  .grades-hero input.grade-input {
+    border-radius: 12px;
+    border: 1px solid rgba(226,232,240,.95) !important;
+    background: rgba(255,255,255,.9);
+    transition: transform .08s ease, box-shadow .2s ease, border-color .2s ease;
+    font-weight: 600;
+  }
+  .grades-hero input.grade-input:hover {
+    border-color: rgba(99,102,241,.35) !important;
+  }
+  .grades-hero input.grade-input:focus {
+    box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+    border-color: rgba(79,70,229,.65) !important;
+    outline: none;
+  }
+
+  /* Header tabel sticky */
+  #gradesTable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f8fafc;
+  }
+
+  /* Badge nilai */
+  .grade-badge {
+    padding: .45rem .7rem;
+    border-radius: 999px;
+    font-weight: 900;
+    letter-spacing: .2px;
+    text-transform: uppercase;
+  }
+  .grade-A { background: rgba(34,197,94,.12) !important; color: #16a34a; border: 1px solid rgba(34,197,94,.25) !important; }
+  .grade-B { background: rgba(59,130,246,.12) !important; color: #2563eb; border: 1px solid rgba(59,130,246,.25) !important; }
+  .grade-C { background: rgba(245,158,11,.12) !important; color: #d97706; border: 1px solid rgba(245,158,11,.25) !important; }
+  .grade-D { background: rgba(239,68,68,.10) !important; color: #dc2626; border: 1px solid rgba(239,68,68,.20) !important; }
+  .grade-E { background: rgba(148,163,184,.16) !important; color: #64748b; border: 1px solid rgba(148,163,184,.30) !important; }
+
+
+  /* Responsive tweak */
+  @media (max-width: 991.98px) {
+    #gradesTable { min-width: 820px; }
+  }
+  @media (max-width: 575.98px) {
+    .grades-hero { padding: 12px !important; }
+    #gradesTable { min-width: 740px; }
+  }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF = '{{ csrf_token() }}';
+
+async function saveAllGrades() {
+  const rows = document.querySelectorAll('#gradesTable tbody tr[data-student-id]');
+  const promises = [];
+
+  rows.forEach(row => {
+    const fd = new FormData();
+    fd.append('csrf_token', CSRF);
+    fd.append('course_id', row.dataset.courseId);
+    fd.append('student_id', row.dataset.studentId);
+    row.querySelectorAll('.grade-input').forEach(inp => fd.append(inp.name, inp.value));
+
+    const p = fetch('{{ url_for("lecturer.update_grade") }}', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        if(data.success) {
+          row.querySelector('.total-score').textContent = data.total;
+          const badge = row.querySelector('.grade-badge');
+          badge.textContent = data.letter;
+          badge.className = `badge grade-badge grade-${data.letter}`;
+        }
+      });
+    promises.push(p);
+  });
+
+  await Promise.all(promises);
+  showToast('Semua nilai berhasil disimpan!', 'success');
+}
+
+function showToast(msg, type) {
+  const toast = document.createElement('div');
+  toast.className = `alert alert-${type} position-fixed bottom-0 end-0 m-3 shadow`;
+  toast.style.zIndex = 9999;
+  toast.innerHTML = `<i class="bi bi-check-circle-fill me-2"></i>${msg}`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+</script>
+{% endblock %}

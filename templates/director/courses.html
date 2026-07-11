@@ -1,0 +1,753 @@
+{% extends 'base.html' %}
+{% block title %}Manajemen Kelas — OmniClass{% endblock %}
+{% block page_title %}Manajemen Mata Kuliah{% endblock %}
+
+{% block extra_css %}
+<style>
+.page-hero {
+  background:linear-gradient(135deg,#0f0e2a 0%,#1e1b4b 55%,#312e81 100%);
+  border-radius:20px; padding:28px 32px; margin-bottom:24px;
+  position:relative; overflow:hidden;
+  box-shadow:0 8px 32px rgba(79,70,229,.25);
+}
+.page-hero::before {
+  content:''; position:absolute; top:-60px; right:-40px;
+  width:200px; height:200px; border-radius:50%;
+  background:radial-gradient(circle,rgba(139,92,246,.3),transparent 70%);
+}
+.hero-title { font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; color:#fff; margin-bottom:4px; }
+.hero-sub   { font-size:13.5px; color:rgba(255,255,255,.55); }
+.hstat { text-align:center; background:rgba(255,255,255,.08); backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:14px 22px; min-width:90px; }
+.hstat-v { font-size:26px; font-weight:800; color:#fff; line-height:1; font-family:'Plus Jakarta Sans',sans-serif; }
+.hstat-l { font-size:11px; color:rgba(255,255,255,.45); margin-top:3px; text-transform:uppercase; letter-spacing:.6px; }
+
+.btn-new { background:linear-gradient(135deg,#22c55e,#16a34a); color:#fff; border:none;
+  padding:11px 22px; border-radius:12px; font-size:13.5px; font-weight:700; cursor:pointer;
+  display:inline-flex; align-items:center; gap:8px;
+  box-shadow:0 4px 16px rgba(34,197,94,.35); transition:all .2s; white-space:nowrap; }
+.btn-new:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(34,197,94,.45); color:#fff; }
+
+/* ── Course Table Card ── */
+.ctable-card { background:#fff; border:1px solid #e2e8f0; border-radius:18px;
+  overflow:hidden; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+.ctable-card table { font-size:13.5px; }
+.ctable-card thead th { background:#f8fafc; font-size:11.5px; font-weight:700;
+  color:#64748b; text-transform:uppercase; letter-spacing:.5px; border:none;
+  padding:13px 16px; }
+.ctable-card tbody td { padding:14px 16px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+.ctable-card tbody tr:last-child td { border-bottom:none; }
+.ctable-card tbody tr:hover { background:#fafbff; }
+
+/* ── Badges ── */
+.course-code { background:rgba(79,70,229,.08); color:#4f46e5;
+  padding:3px 10px; border-radius:8px; font-size:11.5px; font-weight:700; }
+
+/* ── Enroll / Assign pill ── */
+.enroll-pill {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 10px; border-radius:20px;
+  font-size:11.5px; font-weight:600;
+  background:rgba(34,197,94,.1); color:#15803d;
+  cursor:pointer; transition:all .15s;
+  border:1px dashed rgba(34,197,94,.4);
+}
+.enroll-pill:hover { background:rgba(34,197,94,.18); }
+.assign-pill {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 10px; border-radius:20px;
+  font-size:11.5px; font-weight:600;
+  background:rgba(79,70,229,.08); color:#4f46e5;
+  cursor:pointer; transition:all .15s;
+  border:1px dashed rgba(79,70,229,.3);
+}
+.assign-pill:hover { background:rgba(79,70,229,.15); }
+
+.action-btn {
+  width:32px; height:32px; border-radius:8px;
+  border:1.5px solid #e2e8f0; background:#fff;
+  display:inline-flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:13px; color:#64748b; transition:all .15s;
+}
+.action-btn:hover { border-color:#c4b5fd; background:#f0eeff; color:#4f46e5; }
+.action-btn.del:hover { border-color:#fecaca; background:#fff5f5; color:#ef4444; }
+
+/* ── Modal ── */
+.oc-modal .modal-content { border:none; border-radius:20px; overflow:hidden; box-shadow:0 25px 60px rgba(0,0,0,.18); }
+.oc-modal .modal-header { padding:20px 24px; border-bottom:1px solid #f1f5f9; }
+.modal-hicon { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; }
+.oc-modal .modal-body { padding:22px 24px; }
+.oc-modal .modal-footer { padding:14px 24px; border-top:1px solid #f1f5f9; background:#fafbff; }
+.flbl { font-size:12px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.5px; display:block; margin-bottom:6px; }
+.finp { width:100%; padding:10px 13px; border-radius:10px; border:1.5px solid #e2e8f0;
+  font-size:13.5px; background:#f8fafc; font-family:'Inter',sans-serif; color:#0f172a; transition:all .18s; }
+.finp:focus { border-color:#6366f1; background:#fff; box-shadow:0 0 0 3px rgba(99,102,241,.1); outline:none; }
+textarea.finp { resize:vertical; min-height:76px; }
+
+/* ── Student checkbox list ── */
+.student-check-list { max-height:260px; overflow-y:auto; border:1.5px solid #e2e8f0;
+  border-radius:10px; padding:8px; background:#f8fafc; }
+.stu-check-item { display:flex; align-items:center; gap:10px; padding:8px 10px;
+  border-radius:8px; cursor:pointer; transition:background .12s; }
+.stu-check-item:hover { background:#ede9fe; }
+.stu-check-item input[type=checkbox] { width:16px; height:16px; accent-color:#4f46e5; cursor:pointer; }
+.stu-avatar { width:28px; height:28px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+.stu-name { font-size:13px; font-weight:500; color:#0f172a; }
+.stu-nim  { font-size:11px; color:#94a3b8; }
+.stu-search { width:100%; padding:8px 12px; border:1.5px solid #e2e8f0; border-radius:8px;
+  font-size:13px; margin-bottom:8px; font-family:'Inter',sans-serif; }
+.stu-search:focus { border-color:#6366f1; outline:none; }
+.sel-count { font-size:12px; font-weight:600; color:#4f46e5; margin-top:6px; }
+
+/* filter bar */
+.fbar { background:#fff; border:1px solid #e2e8f0; border-radius:14px;
+  padding:12px 18px; display:flex; align-items:center; gap:10px;
+  flex-wrap:wrap; margin-bottom:20px; }
+.fsearch { flex:1; min-width:180px; display:flex; align-items:center; gap:8px;
+  background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:10px; padding:8px 12px; }
+.fsearch:focus-within { border-color:#6366f1; }
+.fsearch i { color:#94a3b8; }
+.fsearch input { border:none; background:transparent; outline:none; font-size:13.5px;
+  color:#334155; width:100%; font-family:'Inter',sans-serif; }
+
+/* Custom Luxury Smooth Hover Effect */
+.course-card-item .card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.course-card-item .card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 24px rgba(79, 70, 229, 0.1) !important;
+}
+
+@media(max-width:767px) {
+  .page-hero { padding:20px 18px; }
+  .hero-title { font-size:17px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-hero">
+  <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap" style="position:relative;z-index:1">
+    <div>
+      <div class="hero-title"><i class="bi bi-book-fill me-2" style="color:#a5b4fc"></i>Manajemen Mata Kuliah</div>
+      <div class="hero-sub">Kelola kelas, dosen pengampu, dan pendaftaran mahasiswa</div>
+    </div>
+    <div class="d-flex gap-3 flex-wrap align-items-center">
+      <div class="hstat">
+        <div class="hstat-v">{{ pagination.total }}</div>
+        <div class="hstat-l">Total Kelas</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-v">{{ lecturers|length }}</div>
+        <div class="hstat-l">Dosen</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-v">{{ students|length }}</div>
+        <div class="hstat-l">Mahasiswa</div>
+      </div>
+      <button class="btn-new" data-bs-toggle="modal" data-bs-target="#modalCreate">
+        <i class="bi bi-plus-circle-fill"></i>Tambah Kelas
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="fbar" style="margin-bottom:14px">
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('director.courses', q=search) }}"
+       class="btn btn-sm {{ 'btn-primary' if program_filter=='all' else 'btn-outline-secondary' }}">
+      <i class="bi bi-grid-3x3-gap me-1"></i>Semua Kelas
+    </a>
+    <a href="{{ url_for('director.courses', q=search, program='PPL') }}"
+       class="btn btn-sm {{ 'btn-primary' if program_filter=='PPL' else 'btn-outline-secondary' }}">
+      🖥️ PPL <span class="badge bg-white text-dark ms-1">{{ count_ppl }}</span>
+    </a>
+    <a href="{{ url_for('director.courses', q=search, program='DM') }}"
+       class="btn btn-sm {{ 'btn-primary' if program_filter=='DM' else 'btn-outline-secondary' }}">
+      📣 DM <span class="badge bg-white text-dark ms-1">{{ count_dm }}</span>
+    </a>
+  </div>
+  <div class="text-muted small mt-1">
+    <i class="bi bi-info-circle me-1"></i>Satu akun direktur — pilih tab untuk mengecek kelas PPL atau DM tanpa perlu akun baru.
+  </div>
+</div>
+
+<div class="fbar">
+  <div class="fsearch">
+    <i class="bi bi-search"></i>
+    <input type="text" id="searchCourse" placeholder="Cari nama atau kode...">
+  </div>
+  <a href="{{ url_for('director.courses') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+  </a>
+</div>
+
+<div class="row g-4" id="courseTable">
+  {% for course in pagination.items %}
+  <div class="col-12 col-md-6 col-lg-4 course-card-item">
+    <div class="card h-100 border-0 shadow-sm" style="border-radius: 20px; overflow: hidden; background: #fff; border: 1px solid #eef2f6 !important;">
+      
+      <div style="height: 6px; background: linear-gradient(90deg, #4f46e5, #6366f1);"></div>
+      
+      <div class="card-body p-4 d-flex flex-column justify-content-between">
+        <div>
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="course-code px-2.5 py-1" style="font-size: 12px; font-weight: 700; border-radius: 8px;">📌 {{ course.code }}</span>
+            <div class="d-flex gap-1">
+              <span class="badge" style="font-size:10.5px;font-weight:700;border-radius:20px;padding:5px 10px;background:{{ course.program_meta.bg_soft }};color:{{ course.program_color }};">
+                <i class="bi {{ course.program_meta.icon }} me-1"></i>{{ course.program }}
+              </span>
+              <span class="badge {% if course.is_active %}bg-success-soft text-success{% else %}bg-secondary-soft text-secondary{% endif %}" style="padding:6px 12px; border-radius:20px; font-size:11px; font-weight:700; background: {% if course.is_active %}#f0fdf4{% else %}#f8fafc{% endif %};">
+                ● {{ 'Aktif' if course.is_active else 'Nonaktif' }}
+              </span>
+            </div>
+          </div>
+
+          <h5 class="fw-bold text-dark mb-1" style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 17px; line-height: 1.4;">{{ course.name }}</h5>
+          <p class="text-muted small mb-3 text-truncate" style="font-size: 12.5px;">{{ course.description or 'Tidak ada detail deskripsi singkat.' }}</p>
+
+          <div class="d-flex flex-wrap gap-1.5 mb-3.5">
+            <span class="badge bg-light text-secondary border px-2 py-1.5" style="border-radius: 8px; font-size: 11px; font-weight: 600; color:#475569 !important;">👥 {{ course.student_count }} Mhs</span>
+            <span class="badge bg-light text-secondary border px-2 py-1.5" style="border-radius: 8px; font-size: 11px; font-weight: 600; color:#475569 !important;">⭐ {{ course.credits }} SKS</span>
+            <span class="badge bg-light text-secondary border px-2 py-1.5" style="border-radius: 8px; font-size: 11px; font-weight: 600; color:#475569 !important;">📅 {{ course.semester or '—' }}</span>
+            <span class="badge bg-light text-secondary border px-2 py-1.5" style="border-radius: 8px; font-size: 11px; font-weight: 600; color:#475569 !important;">📍 {{ course.room or 'No Room' }}</span>
+          </div>
+
+          <hr class="opacity-10 my-3">
+
+          <div class="mb-4">
+            <div class="text-uppercase fw-bold text-muted mb-2" style="font-size: 10px; letter-spacing: 0.5px;">Dosen Pengampu</div>
+            {% if course.lecturer %}
+            <div class="d-flex align-items-center gap-2.5 p-2 rounded-3" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+              <img src="{{ course.lecturer.avatar_url }}" class="rounded-circle border" width="32" height="32" onerror="this.src='/static/img/default_avatar.svg'">
+              <div class="overflow-hidden">
+                <div class="text-truncate fw-bold" style="font-size:12.5px; color:#1e293b;">{{ course.lecturer.full_name }}</div>
+                <div class="text-muted text-truncate" style="font-size:10.5px;">NIP/NIDN: {{ course.lecturer.nip_nim or '—' }}</div>
+              </div>
+            </div>
+            {% else %}
+            <div class="text-muted small p-2 text-center border border-dashed rounded-3" style="font-size: 12px; background: #fafafa;">
+               Belum ditetapkan
+            </div>
+            {% endif %}
+            
+            <button class="assign-pill w-100 justify-content-center py-2 mt-2"
+                    data-cid="{{ course.id }}"
+                    data-cname="{{ course.name }}"
+                    data-lid="{{ course.lecturer_id or '' }}"
+                    onclick="openAssign(this)"
+                    style="border-radius: 10px; font-size: 12px; font-weight: 600;">
+              <i class="bi bi-person-fill-gear me-1"></i>Ganti Dosen
+            </button>
+          </div>
+
+          <div class="mb-2">
+            <div class="d-flex justify-content-between align-items-center mb-1" style="font-size: 12px;">
+              <span class="text-muted font-medium">Kapasitas</span>
+              <span class="fw-bold text-dark">{{ course.student_count }}/{{ course.capacity }}</span>
+            </div>
+            {% set pct = (course.student_count / course.capacity * 100) if course.capacity > 0 else 0 %}
+            <div class="progress" style="height: 6px; border-radius: 10px; background-color: #f1f5f9;">
+              <div class="progress-bar bg-primary" role="progressbar" style="width: {{ pct }}%; border-radius: 10px; background: #4f46e5 !important;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-3 pt-2 border-top">
+          <button class="btn flex-grow-1 d-flex align-items-center justify-content-center gap-1.5"
+                  data-cid="{{ course.id }}"
+                  data-cname="{{ course.name }}"
+                  onclick="openEnroll(this)"
+                  style="border-radius: 12px; font-size: 13px; font-weight: 700; background: #4f46e5; color: #fff; border: none; padding: 10px 0; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);">
+            <i class="bi bi-arrow-right-circle-fill"></i> Kelola
+          </button>
+          
+          <button class="action-btn" title="Edit"
+                  data-action="edit"
+                  data-cid="{{ course.id }}"
+                  data-code="{{ course.code }}"
+                  data-name="{{ course.name }}"
+                  data-description="{{ course.description|default('')|e }}"
+                  data-credits="{{ course.credits }}"
+                  data-semester="{{ course.semester|default('')|e }}"
+                  data-academic_year="{{ course.academic_year|default('')|e }}"
+                  data-room="{{ course.room|default('')|e }}"
+                  data-capacity="{{ course.capacity }}"
+                  data-lecturer_id="{{ course.lecturer_id or '' }}"
+                  style="width: 42px; height: 42px; border-radius: 12px; background: #f1f5f9; border: none; display: flex; align-items: center; justify-content: center;">
+            <i class="bi bi-pencil-fill" style="font-size: 13px;"></i>
+          </button>
+
+          <form method="POST" action="{{ url_for('director.toggle_course_director', cid=course.id) }}" style="margin:0" onsubmit="return confirm('Ubah status kelas?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="action-btn" type="submit" title="{{ 'Nonaktifkan' if course.is_active else 'Aktifkan' }}"
+                    style="width: 42px; height: 42px; border-radius: 12px; background: #f1f5f9; border: none; display: flex; align-items: center; justify-content: center;">
+              <i class="bi {{ 'bi-pause-fill' if course.is_active else 'bi-play-fill' }}" style="font-size: 15px;"></i>
+            </button>
+          </form>
+
+          <form method="POST" action="{{ url_for('director.delete_course_director', cid=course.id) }}" style="margin:0" onsubmit="return confirm('Hapus kelas ini? Data akan dihapus permanen.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="action-btn del" type="submit" title="Hapus"
+                    style="width: 42px; height: 42px; border-radius: 12px; background: #f1f5f9; border: none; display: flex; align-items: center; justify-content: center;">
+              <i class="bi bi-trash3-fill" style="font-size: 13px;"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="col-12 text-center py-5 text-muted bg-white border rounded-4 shadow-sm">
+    <i class="bi bi-book-half display-4 d-block mb-3 opacity-25"></i>
+    Belum ada mata kuliah
+  </div>
+  {% endfor %}
+</div>
+
+{% if pagination.pages > 1 %}
+<div class="d-flex justify-content-between align-items-center mt-4 px-4 py-3 bg-white" style="border-radius: 16px; border: 1px solid #e2e8f0;">
+  <small class="text-muted">Halaman {{ pagination.page }} dari {{ pagination.pages }}</small>
+  <nav><ul class="pagination pagination-sm mb-0 gap-1">
+    {% if pagination.has_prev %}
+    <li class="page-item"><a class="page-link rounded-2 border border-light" href="?page={{ pagination.prev_num }}">‹</a></li>
+    {% endif %}
+    {% for p in pagination.iter_pages() %}
+      {% if p %}
+      <li class="page-item {% if p==pagination.page %}active{% endif %}">
+        <a class="page-link rounded-2 border border-light {% if p==pagination.page %}bg-primary text-white{% endif %}" href="?page={{ p }}">{{ p }}</a>
+      </li>
+      {% endif %}
+    {% endfor %}
+    {% if pagination.has_next %}
+    <li class="page-item"><a class="page-link rounded-2 border border-light" href="?page={{ pagination.next_num }}">›</a></li>
+    {% endif %}
+  </ul></nav>
+</div>
+{% endif %}
+
+
+<div class="modal fade oc-modal" id="modalCreate" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="d-flex align-items-center gap-3">
+          <div class="modal-hicon" style="background:rgba(34,197,94,.1)">
+            <i class="bi bi-plus-circle-fill" style="color:#22c55e"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:15px">Tambah Mata Kuliah Baru</div>
+            <div style="font-size:12px;color:#94a3b8">Lengkapi data & tetapkan dosen + mahasiswa</div>
+          </div>
+        </div>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('director.create_course') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="flbl">Kode MK <span style="color:#ef4444">*</span></label>
+              <input type="text" name="code" class="finp" placeholder="IF101" required
+                     oninput="this.value=this.value.toUpperCase()">
+            </div>
+            <div class="col-md-8">
+              <label class="flbl">Nama Mata Kuliah <span style="color:#ef4444">*</span></label>
+              <input type="text" name="name" class="finp" placeholder="Pemrograman Web" required>
+            </div>
+            <div class="col-12">
+              <label class="flbl">Program Kelas <span style="color:#ef4444">*</span></label>
+              <select name="program" class="finp" required>
+                <option value="PPL">🖥️ PPL — Pengembangan Perangkat Lunak</option>
+                <option value="DM">📣 DM — Digital Marketing</option>
+              </select>
+              <div style="font-size:11px;color:#94a3b8;margin-top:3px">Menentukan tampilan &amp; data kelas agar PPL dan DM tidak tercampur.</div>
+            </div>
+            <div class="col-12">
+              <label class="flbl">Deskripsi</label>
+              <textarea name="description" class="finp" placeholder="Deskripsi singkat..."></textarea>
+            </div>
+            <div class="col-md-3">
+              <label class="flbl">SKS</label>
+              <input type="number" name="credits" class="finp" value="3" min="1" max="6">
+            </div>
+            <div class="col-md-4">
+              <label class="flbl">Semester</label>
+              <select name="semester" class="finp">
+                <option value="">-- Pilih --</option>
+                <option value="Ganjil">Ganjil</option>
+                <option value="Genap">Genap</option>
+                <option value="Pendek">Pendek</option>
+              </select>
+            </div>
+            <div class="col-md-5">
+              <label class="flbl">Tahun Akademik</label>
+              <input type="text" name="academic_year" class="finp" placeholder="2024/2025">
+            </div>
+            <div class="col-md-6">
+              <label class="flbl">Ruangan</label>
+              <input type="text" name="room" class="finp" placeholder="Gedung A-101">
+            </div>
+            <div class="col-md-6">
+              <label class="flbl">Kapasitas</label>
+              <input type="number" name="capacity" class="finp" value="40" min="1">
+            </div>
+
+            <div class="col-12">
+              <label class="flbl">Dosen Pengampu <span style="color:#ef4444">*</span></label>
+              <select name="lecturer_id" class="finp" required>
+                <option value="">-- Pilih Dosen --</option>
+                {% for lec in lecturers %}
+                <option value="{{ lec.id }}">{{ lec.full_name }} ({{ lec.nip_nim or lec.username }})</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12">
+              <label class="flbl">Daftarkan Mahasiswa</label>
+              <input type="text" class="stu-search" id="stuSearchCreate"
+                     placeholder="🔍 Cari nama atau NIM...">
+              <div class="student-check-list" id="stuListCreate">
+                {% for stu in students %}
+                <label class="stu-check-item" data-name="{{ stu.full_name|lower }}" data-nim="{{ stu.nip_nim or '' }}">
+                  <input type="checkbox" name="student_ids[]" value="{{ stu.id }}">
+                  <img src="{{ stu.avatar_url }}" class="stu-avatar" onerror="this.src='/static/img/default_avatar.svg'">
+                  <div>
+                    <div class="stu-name">{{ stu.full_name }}</div>
+                    <div class="stu-nim">{{ stu.nip_nim or stu.username }}</div>
+                  </div>
+                </label>
+                {% endfor %}
+              </div>
+              <div class="sel-count" id="createSelCount">0 mahasiswa dipilih</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary fw-600 px-4">
+            <i class="bi bi-check2-circle me-2"></i>Buat Kelas & Daftarkan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal fade oc-modal" id="modalEdit" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="d-flex align-items-center gap-3">
+          <div class="modal-hicon" style="background:rgba(99,102,241,.12)">
+            <i class="bi bi-pencil-fill" style="color:#6366f1"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:15px">Edit Mata Kuliah</div>
+            <div style="font-size:12px;color:#94a3b8">Ubah data kelas & dosen pengampu</div>
+          </div>
+        </div>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <form method="POST" id="editForm" action="">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" id="editCourseId" value="">
+
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="flbl">Kode MK <span style="color:#ef4444">*</span></label>
+              <input type="text" name="code" id="edit_code" class="finp" required oninput="this.value=this.value.toUpperCase()">
+            </div>
+            <div class="col-md-8">
+              <label class="flbl">Nama Mata Kuliah <span style="color:#ef4444">*</span></label>
+              <input type="text" name="name" id="edit_name" class="finp" required>
+            </div>
+            <div class="col-12">
+              <label class="flbl">Deskripsi</label>
+              <textarea name="description" id="edit_description" class="finp" placeholder="Deskripsi singkat..."></textarea>
+            </div>
+            <div class="col-md-3">
+              <label class="flbl">SKS</label>
+              <input type="number" name="credits" id="edit_credits" class="finp" min="1" max="6">
+            </div>
+            <div class="col-md-4">
+              <label class="flbl">Semester</label>
+              <select name="semester" id="edit_semester" class="finp">
+                <option value="">-- Pilih --</option>
+                <option value="Ganjil">Ganjil</option>
+                <option value="Genap">Genap</option>
+                <option value="Pendek">Pendek</option>
+              </select>
+            </div>
+            <div class="col-md-5">
+              <label class="flbl">Tahun Akademik</label>
+              <input type="text" name="academic_year" id="edit_academic_year" class="finp" placeholder="2024/2025">
+            </div>
+            <div class="col-md-6">
+              <label class="flbl">Ruangan</label>
+              <input type="text" name="room" id="edit_room" class="finp" placeholder="Gedung A-101">
+            </div>
+            <div class="col-md-6">
+              <label class="flbl">Kapasitas</label>
+              <input type="number" name="capacity" id="edit_capacity" class="finp" min="1">
+            </div>
+
+            <div class="col-12">
+              <label class="flbl">Dosen Pengampu <span style="color:#ef4444">*</span></label>
+              <select name="lecturer_id" class="finp" id="edit_lecturer_id" required>
+                <option value="">-- Pilih Dosen --</option>
+                {% for lec in lecturers %}
+                <option value="{{ lec.id }}">{{ lec.full_name }} ({{ lec.nip_nim or lec.username }})</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary fw-600 px-4">
+            <i class="bi bi-check2-circle me-2"></i>Simpan Perubahan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade oc-modal" id="modalEnroll" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:500px">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="d-flex align-items-center gap-3">
+          <div class="modal-hicon" style="background:rgba(34,197,94,.1)">
+            <i class="bi bi-people-fill" style="color:#22c55e"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:15px">Kelola Mahasiswa</div>
+            <div style="font-size:12px;color:#94a3b8" id="enrollCourseName">—</div>
+          </div>
+        </div>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="enrollForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <div class="mb-3" id="currentStudentsWrap">
+            <label class="flbl mb-2">Mahasiswa Terdaftar</label>
+            <div id="currentStudentsList" class="mb-2"></div>
+          </div>
+          <hr>
+          <label class="flbl">Tambah Mahasiswa Baru</label>
+          <input type="text" class="stu-search" id="stuSearchEnroll"
+                 placeholder="🔍 Cari nama atau NIM...">
+          <div class="student-check-list" id="stuListEnroll">
+            {% for stu in students %}
+            <label class="stu-check-item" data-name="{{ stu.full_name|lower }}" data-nim="{{ stu.nip_nim or '' }}"
+                   data-id="{{ stu.id }}">
+              <input type="checkbox" name="student_ids[]" value="{{ stu.id }}">
+              <img src="{{ stu.avatar_url }}" class="stu-avatar" onerror="this.src='/static/img/default_avatar.svg'">
+              <div>
+                <div class="stu-name">{{ stu.full_name }}</div>
+                <div class="stu-nim">{{ stu.nip_nim or stu.username }}</div>
+              </div>
+            </label>
+            {% endfor %}
+          </div>
+          <div class="sel-count" id="enrollSelCount">0 dipilih</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Tutup</button>
+          <button type="submit" class="btn btn-success fw-600 px-4">
+            <i class="bi bi-person-plus-fill me-2"></i>Daftarkan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal fade oc-modal" id="modalAssign" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:440px">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="d-flex align-items-center gap-3">
+          <div class="modal-hicon" style="background:rgba(99,102,241,.1)">
+            <i class="bi bi-person-fill-gear" style="color:#6366f1"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:15px">Ganti Dosen Pengampu</div>
+            <div style="font-size:12px;color:#94a3b8" id="assignCourseName">—</div>
+          </div>
+        </div>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="assignForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <label class="flbl">Pilih Dosen <span style="color:#ef4444">*</span></label>
+          <select name="lecturer_id" class="finp" id="assignLecSelect" required>
+            <option value="">-- Pilih Dosen --</option>
+            {% for lec in lecturers %}
+            <option value="{{ lec.id }}">{{ lec.full_name }} ({{ lec.nip_nim or lec.username }})</option>
+            {% endfor %}
+          </select>
+          <div class="alert alert-warning mt-3 py-2 small">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            Dosen lama akan mendapat notifikasi bahwa kelas dipindahkan.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary fw-600 px-4">
+            <i class="bi bi-check2-circle me-2"></i>Tetapkan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Lux/Edit Modal (CRUD) ──
+const modalEditEl = document.getElementById('modalEdit');
+if (modalEditEl) {
+  const editModal = new bootstrap.Modal(modalEditEl);
+
+  function openEditFromButton(btn) {
+    const code = btn.dataset.code || '';
+    const name = btn.dataset.name || '';
+    const description = btn.dataset.description || '';
+    const credits = btn.dataset.credits || '';
+    const semester = btn.dataset.semester || '';
+    const academic_year = btn.dataset.academic_year || '';
+    const room = btn.dataset.room || '';
+    const capacity = btn.dataset.capacity || '';
+    const lecturer_id = btn.dataset.lecturer_id || '';
+    const cid = btn.dataset.cid;
+
+    document.getElementById('editCourseId').value = cid;
+    document.getElementById('editForm').action = `/director/courses/${cid}/edit`;
+    document.getElementById('edit_code').value = code;
+    document.getElementById('edit_name').value = name;
+    document.getElementById('edit_description').value = description;
+    document.getElementById('edit_credits').value = credits;
+    document.getElementById('edit_semester').value = semester;
+    document.getElementById('edit_academic_year').value = academic_year;
+    document.getElementById('edit_room').value = room;
+    document.getElementById('edit_capacity').value = capacity;
+    document.getElementById('edit_lecturer_id').value = lecturer_id;
+
+    editModal.show();
+  }
+
+  document.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+    btn.addEventListener('click', () => openEditFromButton(btn));
+  });
+}
+
+// ── Search Table / Grid Card (Menyembunyikan element card secara dinamis) ──
+document.getElementById('searchCourse').addEventListener('input',function(){
+
+  const q=this.value.toLowerCase();
+  document.querySelectorAll('#courseTable .course-card-item').forEach(card=>{
+    card.style.display=card.textContent.toLowerCase().includes(q)?'':'none';
+  });
+});
+
+// ── Student search filter (generic) ──
+function setupStudentSearch(searchId, listId, countId) {
+  const si = document.getElementById(searchId);
+  const li = document.getElementById(listId);
+  const ci = document.getElementById(countId);
+  if (!si||!li) return;
+  si.addEventListener('input',()=>{
+    const q=si.value.toLowerCase();
+    li.querySelectorAll('.stu-check-item').forEach(item=>{
+      item.style.display=(item.dataset.name.includes(q)||item.dataset.nim.includes(q))?'':'none';
+    });
+  });
+  li.addEventListener('change',()=>{
+    const n=li.querySelectorAll('input[type=checkbox]:checked').length;
+    if(ci) ci.textContent=`${n} mahasiswa dipilih`;
+  });
+}
+setupStudentSearch('stuSearchCreate','stuListCreate','createSelCount');
+setupStudentSearch('stuSearchEnroll','stuListEnroll','enrollSelCount');
+
+// ── Open Enroll Modal ──
+const allStudents = {{ students | map(attribute='id') | list | tojson }};
+const enrolledMap = {};
+{% for course in pagination.items %}
+enrolledMap[{{ course.id }}] = [{% for s in course.students.all() %}{{ s.id }},{% endfor %}];
+{% endfor %}
+
+function openEnroll(btn) {
+  const cid   = btn.dataset.cid;
+  const cname = btn.dataset.cname;
+  document.getElementById('enrollCourseName').textContent = cname;
+  document.getElementById('enrollForm').action = `/director/courses/${cid}/enroll`;
+
+  // Show current students
+  const enrolled = enrolledMap[cid] || [];
+  const wrap = document.getElementById('currentStudentsList');
+  if (enrolled.length > 0) {
+    const names = [];
+    {% for stu in students %}
+    if (enrolled.includes({{ stu.id }})) {
+      names.push(`<span class="badge bg-primary-soft text-primary me-1 mb-1" style="padding:5px 10px;border-radius:20px;font-size:11.5px">
+        <i class="bi bi-person-fill me-1"></i>{{ stu.full_name }}
+        <a href="#" style="color:inherit;margin-left:4px" onclick="unenroll({{ stu.id }},'${cid}','{{ stu.full_name }}');return false">✕</a>
+      </span>`);
+    }
+    {% endfor %}
+    wrap.innerHTML = names.length ? names.join('') : '<span class="text-muted small">Belum ada</span>';
+  } else {
+    wrap.innerHTML = '<span class="text-muted small">Belum ada mahasiswa terdaftar</span>';
+  }
+
+  // Uncheck already enrolled
+  document.querySelectorAll('#stuListEnroll .stu-check-item').forEach(item=>{
+    const sid = parseInt(item.dataset.id);
+    const cb  = item.querySelector('input');
+    if (enrolled.includes(sid)) {
+      item.style.opacity='.4';
+      cb.disabled=true; cb.checked=false;
+    } else {
+      item.style.opacity='1';
+      cb.disabled=false;
+    }
+  });
+
+  new bootstrap.Modal(document.getElementById('modalEnroll')).show();
+}
+
+function unenroll(sid, cid, name) {
+  if (!confirm(`Keluarkan ${name} dari kelas ini?`)) return;
+  const f = document.createElement('form');
+  f.method='POST'; f.action=`/director/courses/${cid}/unenroll`;
+  f.innerHTML=`<input name="csrf_token" value="{{ csrf_token() }}"><input name="student_id" value="${sid}">`;
+  document.body.appendChild(f); f.submit();
+}
+
+// ── Open Assign Modal ──
+function openAssign(btn) {
+  const cid   = btn.dataset.cid;
+  const cname = btn.dataset.cname;
+  const lid   = btn.dataset.lid;
+  document.getElementById('assignCourseName').textContent = cname;
+  document.getElementById('assignForm').action = `/director/courses/${cid}/assign-lecturer`;
+  const sel = document.getElementById('assignLecSelect');
+  sel.value = lid || '';
+  new bootstrap.Modal(document.getElementById('modalAssign')).show();
+}
+</script>
+{% endblock %}
+

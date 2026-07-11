@@ -1,0 +1,270 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard Mahasiswa — OmniClass{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="welcome-banner mb-4">
+  <div class="welcome-text">
+    <h4 class="fw-700 mb-1">Halo, {{ current_user.full_name.split()[0] }}! 👋</h4>
+    <p class="mb-0 text-muted">Pantau kehadiran, tugas, dan nilai Anda</p>
+  </div>
+  <div class="gpa-badge">
+    <div class="gpa-value">{{ gpa }}</div>
+    <div class="gpa-label">IPK</div>
+  </div>
+</div>
+
+<!-- Open Sessions Alert -->
+{% if open_sessions %}
+<div class="alert d-flex align-items-center gap-3 mb-4"
+     style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1.5px solid #86efac;border-radius:16px">
+  <div style="width:44px;height:44px;background:#22c55e;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+    <i class="bi bi-qr-code-scan text-white fs-5"></i>
+  </div>
+  <div class="flex-grow-1">
+    <strong style="color:#15803d">Sesi Absensi Sedang Berlangsung!</strong>
+    <div style="font-size:13px;color:#16a34a">
+      {% for sess in open_sessions %}
+      <strong>{{ sess.course.name }}</strong> — Pertemuan #{{ sess.meeting_number }}
+      {% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <a href="{{ url_for('student.attendance') }}" class="btn btn-success fw-600 flex-shrink-0">
+    <i class="bi bi-qr-code-scan me-1"></i>Absen Sekarang!
+  </a>
+</div>
+{% endif %}
+
+<!-- Stats -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-blue">
+      <div class="stat-icon"><i class="bi bi-book-fill"></i></div>
+      <div class="stat-value">{{ enrolled|length }}</div>
+      <div class="stat-label">Mata Kuliah</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card {% if att_rate>=75 %}stat-card-green{% else %}stat-card-orange{% endif %}">
+      <div class="stat-icon"><i class="bi bi-calendar-check-fill"></i></div>
+      <div class="stat-value">{{ att_rate }}%</div>
+      <div class="stat-label">Kehadiran</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-orange">
+      <div class="stat-icon"><i class="bi bi-clipboard2-x-fill"></i></div>
+      <div class="stat-value">{{ unsubmitted|length }}</div>
+      <div class="stat-label">Tugas Pending</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-purple">
+      <div class="stat-icon"><i class="bi bi-trophy-fill"></i></div>
+      <div class="stat-value">{{ gpa }}</div>
+      <div class="stat-label">IPK Sementara</div>
+    </div>
+  </div>
+</div>
+
+{% if att_rate < 75 and total_sessions > 0 %}
+<div class="alert alert-danger d-flex align-items-center gap-2 mb-4" style="border-radius:14px">
+  <i class="bi bi-exclamation-triangle-fill flex-shrink-0 fs-5"></i>
+  <div>
+    <strong>Peringatan Kehadiran!</strong> Kehadiran Anda {{ att_rate }}% — di bawah minimum 75%.
+    Segera hubungi dosen pengampu.
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+  <!-- Today's Schedule -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-calendar-day-fill me-2 text-primary"></i>Jadwal Hari Ini</h6>
+        <span class="badge bg-primary">{{ today_schedule|length }}</span>
+      </div>
+      <div class="card-body p-0">
+        {% for item in today_schedule %}
+        <div class="schedule-item px-3 py-3 border-bottom">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="fw-600 mb-1">{{ item.course.name }}</h6>
+              <div class="d-flex flex-wrap gap-2 text-muted small">
+                <span><i class="bi bi-clock me-1"></i>{{ item.schedule.time_range }}</span>
+                <span><i class="bi bi-person me-1"></i>{{ item.course.lecturer.full_name if item.course.lecturer else '—' }}</span>
+                <span><i class="bi bi-geo-alt me-1"></i>{{ item.course.room or 'Online' }}</span>
+              </div>
+            </div>
+            <span class="badge bg-primary-soft text-primary">{{ item.course.code }}</span>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi bi-calendar-x display-4 d-block mb-3 opacity-25"></i>
+          <p class="small">Tidak ada kelas hari ini</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Pending Assignments -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-clipboard2-check-fill me-2 text-warning"></i>Tugas Harus Dikumpulkan</h6>
+        <a href="{{ url_for('student.assignments') }}" class="btn btn-sm btn-outline-warning">Lihat Semua</a>
+      </div>
+      <div class="list-group list-group-flush">
+        {% for asgn in unsubmitted %}
+        {% set days_left = ((asgn.due_date - now()).total_seconds() / 86400)|int %}
+        <div class="list-group-item px-3 py-3">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="fw-500 mb-1">{{ asgn.title }}</div>
+              <div class="d-flex flex-wrap gap-2">
+                <span class="text-muted small"><i class="bi bi-book me-1"></i>{{ asgn.course.name }}</span>
+                <span class="badge {% if days_left<=1 %}bg-danger{% elif days_left<=3 %}bg-warning text-dark{% else %}bg-success{% endif %}-soft text-{% if days_left<=1 %}danger{% elif days_left<=3 %}warning{% else %}success{% endif %} small">
+                  <i class="bi bi-clock me-1"></i>
+                  {% if days_left<=0 %}Hari ini!{% elif days_left==1 %}Besok{% else %}{{ days_left }} hari lagi{% endif %}
+                </span>
+              </div>
+            </div>
+            <a href="{{ url_for('student.assignment_detail', aid=asgn.id) }}" class="btn btn-sm btn-warning text-dark fw-600 flex-shrink-0">
+              Kumpul
+            </a>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi bi-check-circle-fill text-success display-4 d-block mb-3"></i>
+          <p class="small">Semua tugas sudah dikumpulkan! 🎉</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Enrolled Courses with live status -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-book-fill me-2 text-primary"></i>Kelas Saya</h6>
+        <a href="{{ url_for('student.courses') }}" class="btn btn-sm btn-outline-primary">Lihat Semua</a>
+      </div>
+      <div class="row g-0 p-3">
+        {% for course in enrolled %}
+        {% set open_sess = course.sessions.filter_by(is_open=True).first() %}
+        <div class="col-sm-6 col-lg-3 p-2">
+          <div class="course-mini-card" style="position:relative">
+            {% if open_sess %}
+            <div style="position:absolute;top:8px;right:8px;z-index:1">
+              <span class="badge bg-success" style="font-size:10px;animation:pulse 1.5s infinite">
+                <i class="bi bi-broadcast-pin me-1"></i>Live
+              </span>
+            </div>
+            {% endif %}
+            <div class="course-mini-header bg-gradient-{{ loop.index0 % 4 }}" style="padding:12px 14px">
+              <div class="fw-700 text-white small">{{ course.code }}</div>
+            </div>
+            <div class="p-3">
+              <div class="fw-600 small mb-1 text-truncate">{{ course.name }}</div>
+              <div class="text-muted mb-2" style="font-size:.7rem">
+                <i class="bi bi-person me-1"></i>{{ course.lecturer.full_name if course.lecturer else '—' }}
+              </div>
+              {% if open_sess %}
+              <a href="{{ url_for('student.attendance') }}?course_id={{ course.id }}"
+                 class="btn btn-sm btn-success w-100 fw-600">
+                <i class="bi bi-qr-code-scan me-1"></i>Absen!
+              </a>
+              {% else %}
+              <a href="{{ url_for('student.course_detail', cid=course.id) }}"
+                 class="btn btn-sm btn-outline-primary w-100">
+                <i class="bi bi-arrow-right me-1"></i>Masuk
+              </a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="col-12 text-center py-4 text-muted small">
+          <i class="bi bi-book-half fs-3 d-block mb-2 opacity-25"></i>
+          Belum terdaftar di mata kuliah apapun. Hubungi direktur untuk pendaftaran.
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Announcements -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600"><i class="bi bi-megaphone-fill me-2 text-primary"></i>Pengumuman</h6></div>
+      <div class="list-group list-group-flush">
+        {% for ann in announcements %}
+        <div class="list-group-item px-3 py-3">
+          <div class="d-flex gap-2">
+            {% if ann.is_pinned %}<i class="bi bi-pin-fill text-warning mt-1 flex-shrink-0"></i>{% endif %}
+            <div>
+              <div class="fw-500 small">{{ ann.title }}</div>
+              <p class="text-muted small mb-1">{{ ann.content[:100] }}{% if ann.content|length>100 %}…{% endif %}</p>
+              <div class="d-flex gap-2">
+                <small class="text-muted">{{ ann.created_at|time_ago }}</small>
+                <small class="text-muted">·</small>
+                <small class="text-muted">{{ ann.author.full_name }}</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted small">
+          <i class="bi bi-megaphone fs-3 d-block mb-2 opacity-25"></i>Tidak ada pengumuman
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600"><i class="bi bi-lightning-fill me-2 text-warning"></i>Aksi Cepat</h6></div>
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-6">
+            <a href="{{ url_for('student.attendance') }}" class="quick-action-card">
+              <i class="bi bi-qr-code-scan quick-action-icon text-primary"></i>
+              <span>Scan Absensi</span>
+            </a>
+          </div>
+          <div class="col-6">
+            <a href="{{ url_for('student.submit_permit') }}" class="quick-action-card">
+              <i class="bi bi-file-earmark-plus quick-action-icon text-success"></i>
+              <span>Ajukan Izin</span>
+            </a>
+          </div>
+          <div class="col-6">
+            <a href="{{ url_for('student.grades') }}" class="quick-action-card">
+              <i class="bi bi-trophy quick-action-icon text-warning"></i>
+              <span>Lihat Nilai</span>
+            </a>
+          </div>
+          <div class="col-6">
+            <a href="{{ url_for('student.assignments') }}?filter=pending" class="quick-action-card">
+              <i class="bi bi-clipboard2-x-fill quick-action-icon text-danger"></i>
+              <span>Tugas Pending</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes pulse {0%,100%{opacity:1}50%{opacity:.6}}
+</style>
+{% endblock %}

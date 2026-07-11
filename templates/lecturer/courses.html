@@ -1,0 +1,843 @@
+{% extends 'base.html' %}
+{% block title %}Kelas Saya — OmniClass{% endblock %}
+{% block page_title %}Kelas Saya{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ════════════════════════════════════════════
+   LECTURER COURSES — Premium Design
+════════════════════════════════════════════ */
+.courses-header {
+  background: linear-gradient(135deg,#0f0e2a 0%,#1e1b4b 50%,#312e81 100%);
+  border-radius:20px; padding:28px 32px; margin-bottom:24px;
+  position:relative; overflow:hidden;
+  box-shadow:0 8px 32px rgba(79,70,229,.25);
+}
+.courses-header::before {
+  content:''; position:absolute; top:-60px; right:-60px;
+  width:220px; height:220px; border-radius:50%;
+  background:radial-gradient(circle,rgba(139,92,246,.3),transparent 70%);
+  pointer-events:none;
+}
+.ch-title {
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:22px; font-weight:800; color:#fff; margin-bottom:4px;
+}
+.ch-sub { font-size:13.5px; color:rgba(255,255,255,.6); }
+.hstat {
+  text-align:center;
+  background:rgba(255,255,255,.08); backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.12); border-radius:14px;
+  padding:14px 22px; min-width:90px;
+}
+.hstat-val { font-size:26px; font-weight:800; color:#fff; line-height:1; font-family:'Plus Jakarta Sans',sans-serif; }
+.hstat-lbl { font-size:11px; color:rgba(255,255,255,.5); margin-top:3px; text-transform:uppercase; letter-spacing:.6px; }
+
+.btn-add-kelas {
+  background:linear-gradient(135deg,#22c55e,#16a34a);
+  color:#fff; border:none; padding:11px 22px; border-radius:12px;
+  font-size:13.5px; font-weight:700; cursor:pointer; transition:all .2s;
+  display:inline-flex; align-items:center; gap:8px;
+  box-shadow:0 4px 16px rgba(34,197,94,.35); white-space:nowrap;
+  text-decoration:none;
+}
+.btn-add-kelas:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(34,197,94,.45); color:#fff; }
+
+/* ── Filter Bar ── */
+.filter-bar {
+  background:#fff; border:1px solid #e2e8f0; border-radius:14px;
+  padding:14px 18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  margin-bottom:24px; box-shadow:0 1px 4px rgba(0,0,0,.04);
+}
+.fsearch {
+  flex:1; min-width:180px; display:flex; align-items:center; gap:8px;
+  background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:10px;
+  padding:8px 14px; transition:all .18s;
+}
+.fsearch:focus-within { background:#fff; border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.1); }
+.fsearch i { color:#94a3b8; font-size:14px; flex-shrink:0; }
+.fsearch input { border:none; background:transparent; outline:none; font-size:13.5px; color:#334155; width:100%; font-family:'Inter',sans-serif; }
+.ftabs { display:flex; gap:4px; background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:10px; padding:4px; }
+.ftab { padding:6px 14px; border-radius:7px; font-size:12.5px; font-weight:600; color:#64748b; cursor:pointer; border:none; background:transparent; transition:all .15s; white-space:nowrap; }
+.ftab.active { background:#4f46e5; color:#fff; box-shadow:0 2px 8px rgba(79,70,229,.3); }
+.ftab:not(.active):hover { background:#e2e8f0; }
+.vtoggle { display:flex; gap:4px; }
+.vtbtn { width:36px; height:36px; border-radius:8px; border:1.5px solid #e2e8f0; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#94a3b8; font-size:15px; transition:all .15s; }
+.vtbtn.active { background:#4f46e5; border-color:#4f46e5; color:#fff; }
+.vtbtn:not(.active):hover { background:#f8fafc; color:#334155; }
+
+/* ── Course Card ── */
+.cc-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:18px;
+  overflow:hidden; transition:all .22s; box-shadow:0 1px 4px rgba(0,0,0,.05);
+  height:100%; display:flex; flex-direction:column; position:relative;
+}
+.cc-card:hover { transform:translateY(-5px); box-shadow:0 16px 40px rgba(0,0,0,.12); border-color:transparent; }
+.cc-ribbon { height:8px; }
+.r0{background:linear-gradient(90deg,#4f46e5,#7c3aed);}
+.r1{background:linear-gradient(90deg,#059669,#0d9488);}
+.r2{background:linear-gradient(90deg,#d97706,#dc2626);}
+.r3{background:linear-gradient(90deg,#0284c7,#7c3aed);}
+.r4{background:linear-gradient(90deg,#be185d,#9333ea);}
+.r5{background:linear-gradient(90deg,#0f766e,#0284c7);}
+.cc-body { padding:18px 20px; flex:1; display:flex; flex-direction:column; }
+.cc-code { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px; font-size:11.5px; font-weight:700; background:rgba(79,70,229,.08); color:#4f46e5; margin-bottom:8px; }
+.cc-name { font-family:'Plus Jakarta Sans',sans-serif; font-size:15px; font-weight:700; color:#0f172a; margin-bottom:6px; line-height:1.3; }
+.cc-desc { font-size:12.5px; color:#64748b; line-height:1.5; margin-bottom:12px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; flex:1; }
+.cc-status { position:absolute; top:18px; right:18px; padding:3px 10px; border-radius:20px; font-size:10.5px; font-weight:700; }
+.cc-chips { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:12px; }
+.cc-chip { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:20px; font-size:11.5px; font-weight:600; background:#f8fafc; color:#475569; border:1px solid #e2e8f0; }
+.cc-chip i { font-size:10px; }
+.cc-sch-box { background:#f8fafc; border:1px solid #f1f5f9; border-radius:10px; padding:8px 12px; margin-bottom:12px; }
+.cc-sch-row { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#475569; padding:2px 0; }
+.cc-sch-row:not(:last-child) { border-bottom:1px dashed #e2e8f0; margin-bottom:2px; padding-bottom:4px; }
+.cc-sch-day { font-weight:600; color:#334155; display:flex; align-items:center; gap:4px; }
+.cc-sch-time { font-weight:600; color:#4f46e5; font-size:11.5px; }
+.cc-cap-wrap { margin-bottom:12px; }
+.cc-cap-lbl { display:flex; justify-content:space-between; font-size:11.5px; color:#64748b; margin-bottom:3px; }
+.cc-cap-bar { height:5px; background:#f1f5f9; border-radius:20px; overflow:hidden; }
+.cc-cap-fill { height:100%; border-radius:20px; transition:width .6s; }
+.cc-actions { display:flex; gap:7px; margin-top:auto; }
+.cc-btn-main {
+  flex:1; padding:9px 12px; border-radius:10px;
+  background:linear-gradient(135deg,#4f46e5,#6366f1); color:#fff;
+  border:none; font-size:12.5px; font-weight:600; cursor:pointer;
+  transition:all .18s; display:flex; align-items:center;
+  justify-content:center; gap:6px; text-decoration:none;
+}
+.cc-btn-main:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(79,70,229,.35); color:#fff; }
+.cc-btn-ic {
+  width:35px; height:35px; border-radius:9px; border:1.5px solid #e2e8f0;
+  background:#fff; display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:13px; color:#64748b; transition:all .15s; flex-shrink:0;
+}
+.cc-btn-ic:hover { border-color:#c4b5fd; background:#f0eeff; color:#4f46e5; }
+.cc-btn-ic.warn:hover { border-color:#fde68a; background:#fffbeb; color:#d97706; }
+.cc-btn-ic.dng:hover  { border-color:#fecaca; background:#fff5f5; color:#ef4444; }
+
+/* ── List View ── */
+#listView { display:none; }
+.cli {
+  background:#fff; border:1px solid #e2e8f0; border-radius:14px;
+  padding:14px 18px; display:flex; align-items:center; gap:14px;
+  transition:all .18s; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,.04);
+}
+.cli:hover { border-color:#c4b5fd; box-shadow:0 4px 16px rgba(79,70,229,.1); transform:translateX(3px); }
+.cli-bar { width:5px; min-height:50px; border-radius:20px; flex-shrink:0; }
+.cli-code { background:rgba(79,70,229,.08); color:#4f46e5; padding:4px 10px; border-radius:8px; font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0; }
+.cli-name { font-size:14px; font-weight:700; color:#0f172a; }
+.cli-meta { font-size:12px; color:#94a3b8; display:flex; gap:10px; flex-wrap:wrap; margin-top:2px; }
+.cli-meta span { display:flex; align-items:center; gap:3px; }
+.cli-acts { display:flex; gap:6px; flex-shrink:0; margin-left:auto; }
+
+/* ── Empty State ── */
+.empty-state { text-align:center; padding:60px 20px; background:#fff; border:2px dashed #e2e8f0; border-radius:20px; }
+.es-icon { width:80px; height:80px; border-radius:50%; background:rgba(79,70,229,.06); border:2px dashed #c4b5fd; display:flex; align-items:center; justify-content:center; font-size:32px; color:#a5b4fc; margin:0 auto 20px; }
+
+/* ── Modal ── */
+.oc-modal .modal-content { border:none; border-radius:20px; box-shadow:0 25px 60px rgba(0,0,0,.18); overflow:hidden; }
+.oc-modal .modal-header { padding:20px 24px; border-bottom:1px solid #f1f5f9; }
+.mh-icon { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; }
+.oc-modal .modal-body   { padding:22px 24px; }
+.oc-modal .modal-footer { padding:14px 24px; border-top:1px solid #f1f5f9; background:#fafbff; }
+.flbl { font-size:12px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.5px; display:block; margin-bottom:6px; }
+.finp {
+  width:100%; padding:10px 13px; border-radius:10px;
+  border:1.5px solid #e2e8f0; font-size:13.5px;
+  background:#f8fafc; transition:all .18s;
+  font-family:'Inter',sans-serif; color:#0f172a;
+}
+.finp:focus { border-color:#6366f1; background:#fff; box-shadow:0 0 0 3px rgba(99,102,241,.1); outline:none; }
+.finp:disabled { background:#f1f5f9; color:#94a3b8; cursor:not-allowed; }
+textarea.finp { resize:vertical; min-height:76px; }
+.sch-builder { display:flex; flex-direction:column; gap:8px; }
+.sch-row { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:8px; align-items:center; }
+.sch-row select,.sch-row input[type=time] { padding:8px 10px; border-radius:9px; border:1.5px solid #e2e8f0; font-size:13px; background:#f8fafc; font-family:'Inter',sans-serif; transition:all .15s; }
+.sch-row select:focus,.sch-row input[type=time]:focus { border-color:#6366f1; background:#fff; outline:none; box-shadow:0 0 0 3px rgba(99,102,241,.1); }
+.sch-del { width:32px; height:32px; border-radius:8px; background:#fff5f5; border:1.5px solid #fecaca; color:#ef4444; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; transition:all .15s; flex-shrink:0; }
+.sch-del:hover { background:#fee2e2; }
+.btn-add-sch { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:9px; border:1.5px dashed #c4b5fd; background:#f5f3ff; color:#7c3aed; font-size:12.5px; font-weight:600; cursor:pointer; transition:all .15s; }
+.btn-add-sch:hover { background:#ede9fe; border-color:#7c3aed; }
+
+/* ── Confirm Modal ── */
+.confirm-icon-wrap { width:60px; height:60px; border-radius:18px; display:flex; align-items:center; justify-content:center; font-size:26px; margin:0 auto; }
+
+/* ── Anim ── */
+@keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+.ci-anim { animation:fadeUp .35s ease both; }
+
+/* ── Responsive ── */
+@media(max-width:767px) {
+  .courses-header { padding:20px 18px; }
+  .ch-title { font-size:17px; }
+  .sch-row { grid-template-columns:1fr 1fr; }
+  .sch-row select { grid-column:1/-1; }
+  .filter-bar { gap:8px; }
+}
+@media(max-width:575px) {
+  .hstat { min-width:72px; padding:10px 12px; }
+  .hstat-val { font-size:20px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── Pre-compute schedule data safely ── #}
+{% set all_course_scheds = {} %}
+{% for course in courses %}
+  {% set scheds = [] %}
+  {% for sch in course.schedules.all() %}
+    {% set s = {
+      'day_of_week': sch.day_of_week,
+      'start_time' : sch.start_time.strftime('%H:%M') if sch.start_time else '07:30',
+      'end_time'   : sch.end_time.strftime('%H:%M')   if sch.end_time   else '10:00'
+    } %}
+    {% if scheds.append(s) %}{% endif %}
+  {% endfor %}
+  {% if all_course_scheds.update({course.id: scheds}) %}{% endif %}
+{% endfor %}
+
+<!-- ════════════════════════════════════════════
+     PAGE HEADER
+════════════════════════════════════════════ -->
+<div class="courses-header">
+  <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap" style="position:relative;z-index:1">
+    <div>
+      <div class="ch-title">
+        <i class="bi bi-journal-bookmark-fill me-2" style="color:#a5b4fc"></i>Kelas Saya
+      </div>
+      <div class="ch-sub">Kelola semua mata kuliah yang Anda ampu</div>
+    </div>
+    <div class="d-flex gap-3 flex-wrap align-items-center">
+      <div class="hstat">
+        <div class="hstat-val">{{ courses|length }}</div>
+        <div class="hstat-lbl">Kelas</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-val">{{ courses|selectattr('is_active')|list|length }}</div>
+        <div class="hstat-lbl">Aktif</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-val">
+          {% set total_s = namespace(v=0) %}
+          {% for c in courses %}{% set total_s.v = total_s.v + c.student_count %}{% endfor %}
+          {{ total_s.v }}
+        </div>
+        <div class="hstat-lbl">Mahasiswa</div>
+      </div>
+      <button class="btn-add-kelas" data-bs-toggle="modal" data-bs-target="#modalCreate">
+        <i class="bi bi-plus-circle-fill"></i>Tambah Kelas
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     PROGRAM TABS (PPL / DM)
+════════════════════════════════════════════ -->
+<div class="d-flex gap-2 mb-3 flex-wrap">
+  <a href="{{ url_for('lecturer.courses') }}" class="btn btn-sm {{ 'btn-primary' if program_filter=='all' else 'btn-outline-secondary' }}">
+    <i class="bi bi-grid-3x3-gap me-1"></i>Semua Kelas
+  </a>
+  <a href="{{ url_for('lecturer.courses', program='PPL') }}" class="btn btn-sm {{ 'btn-primary' if program_filter=='PPL' else 'btn-outline-secondary' }}">
+    🖥️ PPL <span class="badge bg-white text-dark ms-1">{{ count_ppl }}</span>
+  </a>
+  <a href="{{ url_for('lecturer.courses', program='DM') }}" class="btn btn-sm {{ 'btn-primary' if program_filter=='DM' else 'btn-outline-secondary' }}">
+    📣 DM <span class="badge bg-white text-dark ms-1">{{ count_dm }}</span>
+  </a>
+</div>
+
+<!-- ════════════════════════════════════════════
+     FILTER BAR
+════════════════════════════════════════════ -->
+<div class="filter-bar">
+  <div class="fsearch">
+    <i class="bi bi-search"></i>
+    <input type="text" id="searchInput" placeholder="Cari nama atau kode mata kuliah...">
+  </div>
+  <div class="ftabs">
+    <button class="ftab active" onclick="doFilter('all',this)">Semua</button>
+    <button class="ftab" onclick="doFilter('active',this)">Aktif</button>
+    <button class="ftab" onclick="doFilter('inactive',this)">Nonaktif</button>
+  </div>
+  <div class="vtoggle">
+    <button class="vtbtn active" id="btnGrid" title="Grid" onclick="setView('grid')"><i class="bi bi-grid-3x2-gap-fill"></i></button>
+    <button class="vtbtn" id="btnList" title="List" onclick="setView('list')"><i class="bi bi-list-ul"></i></button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     GRID VIEW
+════════════════════════════════════════════ -->
+<div id="gridView">
+  {% if courses %}
+  <div class="row g-3">
+    {% for course in courses %}
+    {% set ri = loop.index0 % 6 %}
+    <div class="col-sm-6 col-lg-4 ci"
+         data-name="{{ course.name|lower }}"
+         data-code="{{ course.code|lower }}"
+         data-status="{{ 'active' if course.is_active else 'inactive' }}"
+         style="animation:fadeUp .35s ease {{ loop.index0 * 60 }}ms both">
+
+      <div class="cc-card">
+        <div class="cc-ribbon r{{ ri }}"></div>
+        <span class="cc-status {% if course.is_active %}bg-success-soft text-success{% else %}bg-secondary-soft text-secondary{% endif %}">
+          <i class="bi bi-circle-fill me-1" style="font-size:7px"></i>
+          {{ 'Aktif' if course.is_active else 'Nonaktif' }}
+        </span>
+
+        <div class="cc-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <div class="cc-code mb-0"><i class="bi bi-tag-fill"></i>{{ course.code }}</div>
+            <span class="badge" style="font-size:10.5px;font-weight:700;border-radius:20px;padding:4px 10px;background:{{ course.program_meta.bg_soft }};color:{{ course.program_color }};">
+              <i class="bi {{ course.program_meta.icon }} me-1"></i>{{ course.program }}
+            </span>
+          </div>
+          <div class="cc-name">{{ course.name }}</div>
+          <p class="cc-desc">{{ course.description or 'Belum ada deskripsi untuk mata kuliah ini.' }}</p>
+
+          <div class="cc-chips">
+            <span class="cc-chip"><i class="bi bi-people-fill" style="color:#4f46e5"></i>{{ course.student_count }} Mhs</span>
+            <span class="cc-chip"><i class="bi bi-star-fill" style="color:#f59e0b"></i>{{ course.credits }} SKS</span>
+            {% if course.semester %}
+            <span class="cc-chip"><i class="bi bi-calendar3" style="color:#059669"></i>{{ course.semester }}</span>
+            {% endif %}
+            {% if course.room %}
+            <span class="cc-chip"><i class="bi bi-geo-alt-fill" style="color:#ef4444"></i>{{ course.room }}</span>
+            {% endif %}
+          </div>
+
+          {% set scheds = course.schedules.all() %}
+          <div class="cc-sch-box">
+            {% if scheds %}
+            {% for sch in scheds %}
+            <div class="cc-sch-row">
+              <div class="cc-sch-day">
+                <i class="bi bi-clock-fill" style="font-size:10px;color:#6366f1"></i>
+                {{ sch.day_name }}
+              </div>
+              <div class="cc-sch-time">{{ sch.time_range }}</div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div style="font-size:12px;color:#94a3b8;text-align:center;padding:4px">
+              <i class="bi bi-calendar-x me-1"></i>Belum ada jadwal
+            </div>
+            {% endif %}
+          </div>
+
+          {% set cap_pct = [(course.student_count / course.capacity * 100)|int, 100]|min if course.capacity else 0 %}
+          <div class="cc-cap-wrap">
+            <div class="cc-cap-lbl">
+              <span>Kapasitas</span>
+              <span><strong>{{ course.student_count }}</strong>/{{ course.capacity }}</span>
+            </div>
+            <div class="cc-cap-bar">
+              <div class="cc-cap-fill" style="width:{{ cap_pct }}%;background:{% if cap_pct >= 90 %}linear-gradient(90deg,#ef4444,#dc2626){% elif cap_pct >= 70 %}linear-gradient(90deg,#f97316,#ea580c){% else %}linear-gradient(90deg,#4f46e5,#7c3aed){% endif %}"></div>
+            </div>
+          </div>
+
+          <div class="cc-actions">
+            <a href="{{ url_for('lecturer.course_detail', cid=course.id) }}"
+               class="cc-btn-main">
+              <i class="bi bi-arrow-right-circle-fill"></i>Kelola
+            </a>
+            <!-- Edit: pass serialized schedules as data-attribute -->
+            <button class="cc-btn-ic" title="Edit"
+                    data-id="{{ course.id }}"
+                    data-code="{{ course.code }}"
+                    data-name="{{ course.name }}"
+                    data-desc="{{ course.description or '' }}"
+                    data-credits="{{ course.credits }}"
+                    data-semester="{{ course.semester or '' }}"
+                    data-acyear="{{ course.academic_year or '' }}"
+                    data-room="{{ course.room or '' }}"
+                    data-capacity="{{ course.capacity }}"
+                    data-scheds="{{ all_course_scheds[course.id]|tojson|e }}"
+                    onclick="openEdit(this)">
+              <i class="bi bi-pencil-fill"></i>
+            </button>
+            <button class="cc-btn-ic warn" title="{{ 'Nonaktifkan' if course.is_active else 'Aktifkan' }}"
+                    data-id="{{ course.id }}"
+                    data-name="{{ course.name }}"
+                    data-active="{{ 'true' if course.is_active else 'false' }}"
+                    onclick="doToggle(this)">
+              <i class="bi bi-{% if course.is_active %}pause-circle-fill{% else %}play-circle-fill{% endif %}"></i>
+            </button>
+            <button class="cc-btn-ic dng" title="Hapus"
+                    data-id="{{ course.id }}"
+                    data-name="{{ course.name }}"
+                    data-count="{{ course.student_count }}"
+                    onclick="doDelete(this)">
+              <i class="bi bi-trash3-fill"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="es-icon"><i class="bi bi-journal-plus"></i></div>
+    <h5 style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;margin-bottom:8px">Belum Ada Mata Kuliah</h5>
+    <p style="color:#64748b;font-size:13.5px;margin-bottom:20px">Mulai dengan menambahkan mata kuliah pertama Anda.</p>
+    <button class="btn-add-kelas" data-bs-toggle="modal" data-bs-target="#modalCreate">
+      <i class="bi bi-plus-circle-fill"></i>Tambah Sekarang
+    </button>
+  </div>
+  {% endif %}
+
+  <div id="noResultGrid" class="text-center py-5 d-none">
+    <i class="bi bi-search display-4 d-block mb-3 text-muted opacity-25"></i>
+    <p style="color:#94a3b8;font-size:14px">Tidak ada hasil yang cocok</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     LIST VIEW
+════════════════════════════════════════════ -->
+<div id="listView">
+  {% for course in courses %}
+  {% set ri = loop.index0 % 6 %}
+  <div class="cli ci"
+       data-name="{{ course.name|lower }}"
+       data-code="{{ course.code|lower }}"
+       data-status="{{ 'active' if course.is_active else 'inactive' }}"
+       style="animation:fadeUp .3s ease {{ loop.index0 * 50 }}ms both">
+
+    <div class="cli-bar r{{ ri }}" style="background:linear-gradient(180deg,
+      {% if ri==0 %}#4f46e5,#7c3aed
+      {% elif ri==1 %}#059669,#0d9488
+      {% elif ri==2 %}#d97706,#dc2626
+      {% elif ri==3 %}#0284c7,#7c3aed
+      {% elif ri==4 %}#be185d,#9333ea
+      {% else %}#0f766e,#0284c7{% endif %})"></div>
+
+    <div class="cli-code">{{ course.code }}</div>
+
+    <div class="flex-grow-1 min-w-0">
+      <div class="cli-name">{{ course.name }}</div>
+      <div class="cli-meta">
+        <span><i class="bi bi-people-fill" style="color:#4f46e5"></i>{{ course.student_count }} mhs</span>
+        <span><i class="bi bi-star-fill" style="color:#f59e0b"></i>{{ course.credits }} SKS</span>
+        {% if course.semester %}<span><i class="bi bi-calendar3" style="color:#059669"></i>{{ course.semester }}</span>{% endif %}
+        {% if course.room %}<span><i class="bi bi-geo-alt-fill" style="color:#ef4444"></i>{{ course.room }}</span>{% endif %}
+        {% for sch in course.schedules.all() %}
+        <span><i class="bi bi-clock-fill" style="color:#7c3aed"></i>{{ sch.day_name }} {{ sch.time_range }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <span class="badge d-none d-md-flex align-items-center gap-1 {% if course.is_active %}bg-success-soft text-success{% else %}bg-secondary-soft text-secondary{% endif %}" style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600">
+      <i class="bi bi-circle-fill" style="font-size:6px"></i>{{ 'Aktif' if course.is_active else 'Nonaktif' }}
+    </span>
+
+    <div class="cli-acts">
+      <a href="{{ url_for('lecturer.course_detail', cid=course.id) }}"
+         class="cc-btn-ic" style="color:#4f46e5;border-color:#c4b5fd;background:#f5f3ff" title="Kelola">
+        <i class="bi bi-arrow-right-circle-fill"></i>
+      </a>
+      <button class="cc-btn-ic" title="Edit"
+              data-id="{{ course.id }}" data-code="{{ course.code }}"
+              data-name="{{ course.name }}" data-desc="{{ course.description or '' }}"
+              data-credits="{{ course.credits }}" data-semester="{{ course.semester or '' }}"
+              data-acyear="{{ course.academic_year or '' }}" data-room="{{ course.room or '' }}"
+              data-capacity="{{ course.capacity }}"
+              data-scheds="{{ all_course_scheds[course.id]|tojson|e }}"
+              onclick="openEdit(this)">
+        <i class="bi bi-pencil-fill"></i>
+      </button>
+      <button class="cc-btn-ic warn"
+              data-id="{{ course.id }}" data-name="{{ course.name }}"
+              data-active="{{ 'true' if course.is_active else 'false' }}"
+              onclick="doToggle(this)">
+        <i class="bi bi-{% if course.is_active %}pause-circle-fill{% else %}play-circle-fill{% endif %}"></i>
+      </button>
+      <button class="cc-btn-ic dng"
+              data-id="{{ course.id }}" data-name="{{ course.name }}"
+              data-count="{{ course.student_count }}"
+              onclick="doDelete(this)">
+        <i class="bi bi-trash3-fill"></i>
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+  <div id="noResultList" class="text-center py-5 d-none">
+    <i class="bi bi-search display-4 d-block mb-3 text-muted opacity-25"></i>
+    <p style="color:#94a3b8">Tidak ada hasil ditemukan</p>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     MODAL CREATE
+════════════════════════════════════════════ -->
+<div class="modal fade oc-modal" id="modalCreate" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="d-flex align-items-center gap-3">
+          <div class="mh-icon" style="background:rgba(34,197,94,.1)">
+            <i class="bi bi-plus-circle-fill" style="color:#22c55e"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:15px;color:#0f172a">Tambah Mata Kuliah</div>
+            <div style="font-size:12px;color:#94a3b8">Isi semua data yang diperlukan</div>
+          </div>
+        </div>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="/lecturer/courses/create">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="flbl">Kode MK <span style="color:#ef4444">*</span></label>
+              <input type="text" name="code" class="finp" placeholder="IF101" required
+                     oninput="this.value=this.value.toUpperCase()">
+            </div>
+            <div class="col-md-8">
+              <label class="flbl">Nama Mata Kuliah <span style="color:#ef4444">*</span></label>
+              <input type="text" name="name" class="finp" placeholder="Pemrograman Web" required>
+            </div>
+            <div class="col-12">
+              <label class="flbl">Program Kelas <span style="color:#ef4444">*</span></label>
+              <select name="program" class="finp" required>
+                <option value="PPL">🖥️ PPL — Pengembangan Perangkat Lunak</option>
+                <option value="DM">📣 DM — Digital Marketing</option>
+              </select>
+              <div style="font-size:11px;color:#94a3b8;margin-top:3px">
+                Data &amp; tampilan kelas PPL dan DM akan tetap terpisah otomatis.
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="flbl">Deskripsi</label>
+              <textarea name="description" class="finp" placeholder="Deskripsi singkat..."></textarea>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="flbl">SKS <span style="color:#ef4444">*</span></label>
+              <input type="number" name="credits" class="finp" value="3" min="1" max="6" required>
+            </div>
+            <div class="col-6 col-md-4">
+              <label class="flbl">Semester</label>
+              <select name="semester" class="finp">
+                <option value="">-- Pilih --</option>
+                <option value="Ganjil">Ganjil</option>
+                <option value="Genap">Genap</option>
+                <option value="Pendek">Pendek</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="flbl">Tahun Akademik</label>
+              <input type="text" name="academic_year" class="finp" placeholder="2024/2025">
+            </div>
+            <div class="col-md-6">
+              <label class="flbl">Ruangan</label>
+              <input type="text" name="room" class="finp" placeholder="Gedung A-101">
+            </div>
+            <div class="col-md-6">
+              <label class="flbl">Kapasitas</label>
+              <input type="number" name="capacity" class="finp" value="40" min="1" max="500">
+            </div>
+            <div class="col-12">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="flbl mb-0">Jadwal Perkuliahan</label>
+                <button type="button" class="btn-add-sch" onclick="addRow('schCreate')">
+                  <i class="bi bi-plus-circle-fill"></i>Tambah Hari
+                </button>
+              </div>
+              <div class="sch-builder" id="schCreate">
+                <div class="sch-row">
+                  <select name="sch_day[]">
+                    <option value="">Pilih Hari</option>
+                    <option value="1">Senin</option><option value="2">Selasa</option>
+                    <option value="3">Rabu</option><option value="4">Kamis</option>
+                    <option value="5">Jumat</option><option value="6">Sabtu</option>
+                    <option value="0">Minggu</option>
+                  </select>
+                  <input type="time" name="sch_start[]" value="07:30">
+                  <input type="time" name="sch_end[]"   value="10:00">
+                  <button type="button" class="sch-del" onclick="delRow(this)"><i class="bi bi-x-lg"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary fw-600 px-4">
+            <i class="bi bi-check2-circle me-2"></i>Simpan Kelas
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     MODAL EDIT
+════════════════════════════════════════════ -->
+<div class="modal fade oc-modal" id="modalEdit" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="d-flex align-items-center gap-3">
+          <div class="mh-icon" style="background:rgba(99,102,241,.1)">
+            <i class="bi bi-pencil-fill" style="color:#6366f1"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:15px;color:#0f172a">Edit Mata Kuliah</div>
+            <div style="font-size:12px;color:#94a3b8" id="editSubtitle">Perbarui informasi</div>
+          </div>
+        </div>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="formEdit">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="flbl">Kode MK</label>
+              <input type="text" class="finp" id="eCode" disabled>
+              <div style="font-size:11px;color:#94a3b8;margin-top:3px"><i class="bi bi-lock-fill me-1"></i>Tidak dapat diubah</div>
+            </div>
+            <div class="col-md-8">
+              <label class="flbl">Nama Mata Kuliah <span style="color:#ef4444">*</span></label>
+              <input type="text" name="name" class="finp" id="eName" required>
+            </div>
+            <div class="col-12">
+              <label class="flbl">Deskripsi</label>
+              <textarea name="description" class="finp" id="eDesc"></textarea>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="flbl">SKS</label>
+              <input type="number" name="credits" class="finp" id="eCredits" min="1" max="6">
+            </div>
+            <div class="col-6 col-md-4">
+              <label class="flbl">Semester</label>
+              <select name="semester" class="finp" id="eSemester">
+                <option value="">-- Pilih --</option>
+                <option value="Ganjil">Ganjil</option>
+                <option value="Genap">Genap</option>
+                <option value="Pendek">Pendek</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="flbl">Tahun Akademik</label>
+              <input type="text" name="academic_year" class="finp" id="eAcYear" placeholder="2024/2025">
+            </div>
+            <div class="col-md-6">
+              <label class="flbl">Ruangan</label>
+              <input type="text" name="room" class="finp" id="eRoom">
+            </div>
+            <div class="col-md-6">
+              <label class="flbl">Kapasitas</label>
+              <input type="number" name="capacity" class="finp" id="eCap" min="1" max="500">
+            </div>
+            <div class="col-12">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="flbl mb-0">Jadwal Perkuliahan</label>
+                <button type="button" class="btn-add-sch" onclick="addRow('schEdit')">
+                  <i class="bi bi-plus-circle-fill"></i>Tambah Hari
+                </button>
+              </div>
+              <div class="sch-builder" id="schEdit"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary fw-600 px-4">
+            <i class="bi bi-check2-circle me-2"></i>Simpan Perubahan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     MODAL KONFIRMASI
+════════════════════════════════════════════ -->
+<div class="modal fade oc-modal" id="modalConfirm" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:400px">
+    <div class="modal-content">
+      <div class="modal-body text-center py-4">
+        <div class="confirm-icon-wrap mb-3" id="confIconWrap">
+          <i id="confIcon"></i>
+        </div>
+        <h5 id="confTitle" style="font-weight:700;color:#0f172a;margin-bottom:8px"></h5>
+        <p id="confMsg" style="color:#64748b;font-size:13.5px;margin:0 0 4px"></p>
+      </div>
+      <div class="modal-footer border-0 pt-0 justify-content-center gap-2">
+        <button class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Batal</button>
+        <form method="POST" id="confForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn px-5 fw-600" id="confBtn"></button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Ensure CSS/HTML is parsed correctly on all browsers
+const DAYS = {0:'Minggu',1:'Senin',2:'Selasa',3:'Rabu',4:'Kamis',5:'Jumat',6:'Sabtu'};
+
+/* ── View switch ── */
+function setView(v) {
+  const gv = document.getElementById('gridView');
+  const lv = document.getElementById('listView');
+  if (v === 'grid') {
+    gv.style.display = ''; lv.style.display = 'none';
+    document.getElementById('btnGrid').classList.add('active');
+    document.getElementById('btnList').classList.remove('active');
+  } else {
+    gv.style.display = 'none'; lv.style.display = '';
+    document.getElementById('btnList').classList.add('active');
+    document.getElementById('btnGrid').classList.remove('active');
+  }
+  try { localStorage.setItem('ocView', v); } catch(e) {}
+}
+(function(){ try { if(localStorage.getItem('ocView')==='list') setView('list'); } catch(e){} })();
+
+/* ── Filter / Search ── */
+let curFilter = 'all';
+document.getElementById('searchInput').addEventListener('input', function() {
+  applyFilter(this.value.toLowerCase().trim());
+});
+function doFilter(f, btn) {
+  curFilter = f;
+  document.querySelectorAll('.ftab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilter(document.getElementById('searchInput').value.toLowerCase().trim());
+}
+function applyFilter(q) {
+  let vis = 0;
+  document.querySelectorAll('.ci').forEach(el => {
+    const mQ = !q || el.dataset.name.includes(q) || el.dataset.code.includes(q);
+    const mS = curFilter === 'all' || el.dataset.status === curFilter;
+    el.style.display = (mQ && mS) ? '' : 'none';
+    if (mQ && mS) vis++;
+  });
+  const ng = document.getElementById('noResultGrid');
+  const nl = document.getElementById('noResultList');
+  if (ng) ng.classList.toggle('d-none', vis > 0);
+  if (nl) nl.classList.toggle('d-none', vis > 0);
+}
+
+/* ── Schedule builder ── */
+function addRow(bid, dayVal, start, end) {
+  dayVal = dayVal || '';
+  start  = start  || '07:30';
+  end    = end    || '10:00';
+  const b = document.getElementById(bid);
+  const r = document.createElement('div');
+  r.className = 'sch-row';
+  r.innerHTML = `
+    <select name="sch_day[]">
+      <option value="">Pilih Hari</option>
+      ${Object.entries(DAYS).map(([v,l])=>`<option value="${v}" ${v==dayVal?'selected':''}>${l}</option>`).join('')}
+    </select>
+    <input type="time" name="sch_start[]" value="${start}">
+    <input type="time" name="sch_end[]"   value="${end}">
+    <button type="button" class="sch-del" onclick="delRow(this)"><i class="bi bi-x-lg"></i></button>`;
+  b.appendChild(r);
+}
+function delRow(btn) {
+  const b = btn.closest('.sch-builder');
+  if (b.querySelectorAll('.sch-row').length <= 1) {
+    showToast('Minimal satu baris jadwal diperlukan.','warning'); return;
+  }
+  const r = btn.closest('.sch-row');
+  r.style.transition = 'opacity .2s,transform .2s';
+  r.style.opacity = '0'; r.style.transform = 'translateX(10px)';
+  setTimeout(() => r.remove(), 200);
+}
+
+/* ── Open Edit Modal ── */
+function openEdit(btn) {
+  const id  = btn.dataset.id;
+  document.getElementById('formEdit').action = `/lecturer/courses/${id}/edit`;
+  document.getElementById('editSubtitle').textContent = `Editing: ${btn.dataset.code}`;
+  document.getElementById('eCode').value     = btn.dataset.code;
+  document.getElementById('eName').value     = btn.dataset.name;
+  document.getElementById('eDesc').value     = btn.dataset.desc;
+  document.getElementById('eCredits').value  = btn.dataset.credits;
+  document.getElementById('eRoom').value     = btn.dataset.room;
+  document.getElementById('eCap').value      = btn.dataset.capacity;
+  document.getElementById('eAcYear').value   = btn.dataset.acyear;
+
+  const semEl = document.getElementById('eSemester');
+  semEl.value = btn.dataset.semester;
+
+  // Parse schedules safely
+  const sb = document.getElementById('schEdit');
+  sb.innerHTML = '';
+  try {
+    const scheds = JSON.parse(btn.dataset.scheds || '[]');
+    if (scheds.length > 0) {
+      scheds.forEach(s => addRow('schEdit', String(s.day_of_week), s.start_time, s.end_time));
+    } else {
+      addRow('schEdit');
+    }
+  } catch(e) {
+    addRow('schEdit');
+  }
+
+  new bootstrap.Modal(document.getElementById('modalEdit')).show();
+}
+
+/* ── Toggle Active ── */
+function doToggle(btn) {
+  const isActive = btn.dataset.active === 'true';
+  const action   = isActive ? 'Nonaktifkan' : 'Aktifkan';
+  const color    = isActive ? '#f97316' : '#22c55e';
+  const bg       = isActive ? 'rgba(249,115,22,.1)' : 'rgba(34,197,94,.1)';
+  const icon     = isActive ? 'bi-pause-circle-fill' : 'bi-play-circle-fill';
+
+  document.getElementById('confIconWrap').style.background = bg;
+  document.getElementById('confIconWrap').style.borderRadius = '16px';
+  document.getElementById('confIconWrap').style.padding = '10px';
+  document.getElementById('confIcon').className = `bi ${icon}`;
+  document.getElementById('confIcon').style.color = color;
+  document.getElementById('confIcon').style.fontSize = '28px';
+  document.getElementById('confTitle').textContent = `${action} Mata Kuliah`;
+  document.getElementById('confMsg').innerHTML = `Yakin ingin <strong>${action.toLowerCase()}</strong> mata kuliah:<br><strong>${btn.dataset.name}</strong>?`;
+  document.getElementById('confForm').action = `/lecturer/courses/${btn.dataset.id}/toggle`;
+  document.getElementById('confBtn').className = `btn fw-600 px-5 btn-${isActive ? 'warning' : 'success'}`;
+  document.getElementById('confBtn').textContent = action;
+
+  new bootstrap.Modal(document.getElementById('modalConfirm')).show();
+}
+
+/* ── Delete ── */
+function doDelete(btn) {
+  if (parseInt(btn.dataset.count) > 0) {
+    showToast(`Tidak dapat hapus — masih ada ${btn.dataset.count} mahasiswa terdaftar.`,'danger');
+    return;
+  }
+  document.getElementById('confIconWrap').style.background = 'rgba(239,68,68,.1)';
+  document.getElementById('confIconWrap').style.borderRadius = '16px';
+  document.getElementById('confIconWrap').style.padding = '10px';
+  document.getElementById('confIcon').className = 'bi bi-trash3-fill';
+  document.getElementById('confIcon').style.color = '#ef4444';
+  document.getElementById('confIcon').style.fontSize = '28px';
+  document.getElementById('confTitle').textContent = 'Hapus Mata Kuliah';
+  document.getElementById('confMsg').innerHTML = `Tindakan ini <strong>tidak dapat dibatalkan</strong>.<br>Kelas <strong>${btn.dataset.name}</strong> akan dihapus.`;
+  document.getElementById('confForm').action = `/lecturer/courses/${btn.dataset.id}/delete`;
+  document.getElementById('confBtn').className = 'btn btn-danger fw-600 px-5';
+  document.getElementById('confBtn').textContent = 'Ya, Hapus!';
+
+  new bootstrap.Modal(document.getElementById('modalConfirm')).show();
+}
+</script>
+{% endblock %}

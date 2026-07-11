@@ -1,0 +1,413 @@
+{% extends 'base.html' %}
+{% block title %}Manajemen Pengguna — OmniClass{% endblock %}
+{% block page_title %}Manajemen Pengguna{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Profile-card detail modal (matches profile.html hero style) ── */
+.pd-hero { position: relative; border-radius: 20px 20px 0 0; overflow: hidden; }
+.pd-banner {
+  height: 150px; position: relative;
+}
+.pd-banner.role-director { background: linear-gradient(135deg,#1e1b4b 0%, #4f46e5 50%, #7c3aed 100%); }
+.pd-banner.role-lecturer { background: linear-gradient(135deg,#064e3b 0%, #059669 50%, #0d9488 100%); }
+.pd-banner.role-student  { background: linear-gradient(135deg,#78350f 0%, #d97706 50%, #f59e0b 100%); }
+.pd-banner::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.08'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.pd-body { background: #fff; padding: 0 26px 24px; position: relative; }
+.pd-avatar-wrap { width: 100px; height: 100px; margin-top: -50px; flex-shrink: 0; }
+.pd-avatar-img {
+  width: 100px; height: 100px; border-radius: 50%; object-fit: cover;
+  border: 4px solid #fff; box-shadow: 0 4px 16px rgba(0,0,0,.15); background: #f1f5f9; display: block;
+}
+.pd-role-badge { display:inline-flex; align-items:center; gap:6px; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:700; }
+.pd-role-badge.director { background: rgba(79,70,229,.12); color:#4f46e5; }
+.pd-role-badge.lecturer { background: rgba(5,150,105,.12);  color:#059669; }
+.pd-role-badge.student  { background: rgba(217,119,6,.12);  color:#d97706; }
+.pd-contact-item { display:flex; align-items:center; gap:10px; padding:7px 0; font-size:14px; color:#334155; }
+.pd-contact-item i { width:18px; text-align:center; }
+.pd-stats { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+.pd-stat { flex:1; min-width:90px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 10px; text-align:center; }
+.pd-stat-value { font-size:22px; font-weight:800; line-height:1; }
+.pd-stat-label { font-size:11px; color:#64748b; margin-top:4px; font-weight:600; }
+.pd-course-item { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid #f1f5f9; font-size:13px; }
+.pd-course-item:last-child { border-bottom:none; }
+
+@media (max-width: 575px) {
+  .pd-banner { height: 110px; }
+  .pd-avatar-wrap, .pd-avatar-img { width: 78px; height: 78px; margin-top: -39px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Toolbar -->
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-4">
+  <form class="d-flex flex-wrap gap-2" method="GET">
+    <div class="input-icon-group">
+      <i class="bi bi-search input-icon"></i>
+      <input type="text" name="q" class="form-control input-with-icon" placeholder="Cari nama, email, NIM..." value="{{ search }}">
+    </div>
+    <select name="role" class="form-select" style="width:140px">
+      <option value="all" {% if role_filter == 'all' %}selected{% endif %}>Semua Role</option>
+      <option value="director" {% if role_filter == 'director' %}selected{% endif %}>Direktur</option>
+      <option value="lecturer" {% if role_filter == 'lecturer' %}selected{% endif %}>Dosen</option>
+      <option value="student" {% if role_filter == 'student' %}selected{% endif %}>Mahasiswa</option>
+    </select>
+    <button class="btn btn-primary"><i class="bi bi-search"></i></button>
+  </form>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importModal">
+      <i class="bi bi-upload me-1"></i>Import CSV
+    </button>
+    <a href="{{ url_for('director.add_user') }}" class="btn btn-primary">
+      <i class="bi bi-person-plus-fill me-1"></i>Tambah Pengguna
+    </a>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 fw-600">Daftar Pengguna</h6>
+    <span class="text-muted small">{{ pagination.total }} pengguna ditemukan</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-head">
+        <tr>
+          <th>#</th>
+          <th>Nama</th>
+          <th>Email</th>
+          <th>NIP/NIM</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Login Terakhir</th>
+          <th class="text-end">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in pagination.items %}
+        <tr>
+          <td class="text-muted small">{{ loop.index + (pagination.page-1)*pagination.per_page }}</td>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <img src="{{ user.avatar_url }}" class="rounded-circle" width="34" height="34">
+              <div>
+                <div class="fw-500">{{ user.full_name }}</div>
+                <small class="text-muted">@{{ user.username }}</small>
+              </div>
+            </div>
+          </td>
+          <td><small>{{ user.email }}</small></td>
+          <td><small class="text-muted">{{ user.nip_nim or '—' }}</small></td>
+          <td>
+            <span class="role-badge role-{{ user.role }}">
+              {% if user.role == 'director' %}<i class="bi bi-building me-1"></i>
+              {% elif user.role == 'lecturer' %}<i class="bi bi-person-workspace me-1"></i>
+              {% else %}<i class="bi bi-mortarboard me-1"></i>{% endif %}
+              {{ user.role | title }}
+            </span>
+          </td>
+          <td>
+            <span class="badge rounded-pill {% if user.is_active %}bg-success{% else %}bg-danger{% endif %}-soft text-{% if user.is_active %}success{% else %}danger{% endif %}">
+              {{ 'Aktif' if user.is_active else 'Nonaktif' }}
+            </span>
+          </td>
+          <td><small class="text-muted">{{ user.last_login.strftime('%d %b %Y') if user.last_login else '—' }}</small></td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-primary" title="Detail" onclick="showUserDetail({{ user.id }})">
+                <i class="bi bi-eye-fill"></i>
+              </button>
+              <button class="btn btn-outline-secondary" title="Edit" onclick='openEditModal({{ {
+                  "id": user.id, "full_name": user.full_name, "email": user.email,
+                  "username": user.username, "role": user.role, "program": user.program,
+                  "nip_nim": user.nip_nim, "phone": user.phone
+                } | tojson }})'>
+                <i class="bi bi-pencil-fill"></i>
+              </button>
+              <form method="POST" action="{{ url_for('director.toggle_user', uid=user.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-outline-{{ 'danger' if user.is_active else 'success' }}" title="{{ 'Nonaktifkan' if user.is_active else 'Aktifkan' }}">
+                  <i class="bi bi-{{ 'slash-circle' if user.is_active else 'check-circle' }}-fill"></i>
+                </button>
+              </form>
+              <button class="btn btn-outline-danger" title="Hapus"
+                      onclick="confirmDelete({{ user.id }}, '{{ user.full_name|e }}')">
+                <i class="bi bi-trash3-fill"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center py-5 text-muted">Tidak ada pengguna ditemukan</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if pagination.pages > 1 %}
+  <div class="card-footer d-flex justify-content-between align-items-center">
+    <small class="text-muted">Halaman {{ pagination.page }} dari {{ pagination.pages }}</small>
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% if pagination.has_prev %}
+        <li class="page-item"><a class="page-link" href="?page={{ pagination.prev_num }}&role={{ role_filter }}&q={{ search }}">‹</a></li>
+        {% endif %}
+        {% for p in pagination.iter_pages() %}
+          {% if p %}
+          <li class="page-item {% if p == pagination.page %}active{% endif %}">
+            <a class="page-link" href="?page={{ p }}&role={{ role_filter }}&q={{ search }}">{{ p }}</a>
+          </li>
+          {% else %}
+          <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ pagination.next_num }}&role={{ role_filter }}&q={{ search }}">›</a></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-600">Import Pengguna via CSV</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info small">
+          <i class="bi bi-info-circle-fill me-2"></i>
+          Format CSV: <code>full_name, email, username, role, nip_nim, phone, password</code>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Pilih File CSV</label>
+          <input type="file" class="form-control" accept=".csv,.xlsx">
+        </div>
+        <a href="#" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-download me-1"></i>Download Template
+        </a>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+        <button class="btn btn-primary"><i class="bi bi-upload me-1"></i>Import Sekarang</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modal: Detail Profil Pengguna (luxury profile-card style) ═══ -->
+<div class="modal fade" id="modalUserDetail" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content" style="border-radius:20px;border:none;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+      <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3" style="z-index:5" data-bs-dismiss="modal"></button>
+      <div class="modal-body p-0" id="userDetailBody">
+        <div class="text-center py-5 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Memuat...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modal: Edit Pengguna + Reset Password ═══ -->
+<div class="modal fade" id="modalEditUser" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:20px;border:none;overflow:hidden">
+      <form method="POST" id="editUserForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff">
+          <h6 class="modal-title fw-700 mb-0"><i class="bi bi-pencil-square me-2"></i>Edit Pengguna</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small fw-600">Nama Lengkap</label>
+              <input type="text" name="full_name" id="editFullName" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-600">Username</label>
+              <input type="text" name="username" id="editUsername" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-600">Email</label>
+              <input type="email" name="email" id="editEmail" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-600">No. Telepon</label>
+              <input type="text" name="phone" id="editPhone" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-600">NIP/NIM</label>
+              <input type="text" name="nip_nim" id="editNipNim" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-600">Role</label>
+              <select name="role" id="editRole" class="form-select" onchange="toggleEditProgram()">
+                <option value="director">Direktur</option>
+                <option value="lecturer">Dosen</option>
+                <option value="student">Mahasiswa</option>
+              </select>
+            </div>
+            <div class="col-12 d-none" id="editProgramWrap">
+              <label class="form-label small fw-600">Program / Kelas</label>
+              <select name="program" id="editProgram" class="form-select">
+                <option value="PPL">🖥️ PPL — Pengembangan Perangkat Lunak</option>
+                <option value="DM">📣 DM — Digital Marketing</option>
+              </select>
+            </div>
+            <div class="col-12"><hr class="my-1"></div>
+            <div class="col-12">
+              <label class="form-label small fw-600 text-warning"><i class="bi bi-key-fill me-1"></i>Reset Password (opsional)</label>
+              <input type="password" name="new_password" class="form-control" placeholder="Kosongkan jika tidak ingin mengubah password">
+              <div class="form-text">Isi hanya jika ingin mengatur ulang password pengguna ini.</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary fw-600"><i class="bi bi-check2-circle me-2"></i>Simpan Perubahan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modal: Konfirmasi Hapus ═══ -->
+<div class="modal fade" id="modalDeleteUser" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:20px;border:none">
+      <div class="modal-body text-center p-4">
+        <i class="bi bi-exclamation-triangle-fill text-danger display-4 mb-3 d-block"></i>
+        <h6 class="fw-700 mb-2">Hapus pengguna ini?</h6>
+        <p class="text-muted small mb-4">
+          Anda akan menghapus <strong id="deleteUserName"></strong> secara permanen beserta seluruh data terkait
+          (pendaftaran kelas, nilai, tugas, absensi). Tindakan ini tidak dapat dibatalkan.
+        </p>
+        <div id="deleteUserMsg" class="small mb-2"></div>
+        <form method="POST" id="deleteUserForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="d-flex gap-2 justify-content-center">
+            <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Batal</button>
+            <button type="submit" class="btn btn-danger px-4 fw-600" id="btnConfirmDelete"><i class="bi bi-trash3-fill me-2"></i>Ya, Hapus</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ROLE_META = {
+  director: { label: '🏢 Direktur', cls: 'director' },
+  lecturer: { label: '👨‍🏫 Dosen',   cls: 'lecturer' },
+  student:  { label: '🎓 Mahasiswa', cls: 'student' },
+};
+
+async function showUserDetail(uid) {
+  const modal = new bootstrap.Modal(document.getElementById('modalUserDetail'));
+  document.getElementById('userDetailBody').innerHTML = '<div class="text-center py-5 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Memuat...</div>';
+  modal.show();
+  try {
+    const res = await fetch(`/director/users/${uid}/detail`);
+    const d = await res.json();
+    if (!d.success) { document.getElementById('userDetailBody').innerHTML = '<div class="alert alert-danger m-4">Gagal memuat data.</div>'; return; }
+
+    const rm = ROLE_META[d.role] || { label: d.role, cls: 'student' };
+    const progBadge = d.program
+      ? `<span class="badge ms-2" style="background:${d.program==='PPL'?'#4f46e5':'#ea580c'}">${d.program}</span>` : '';
+
+    let statsHtml = '';
+    let coursesHtml = '';
+    if (d.role === 'lecturer') {
+      statsHtml = `
+        <div class="pd-stats">
+          <div class="pd-stat"><div class="pd-stat-value text-primary">${d.stats.total_courses}</div><div class="pd-stat-label">Kelas Diampu</div></div>
+          <div class="pd-stat"><div class="pd-stat-value text-success">${d.stats.total_students}</div><div class="pd-stat-label">Mahasiswa</div></div>
+        </div>`;
+      coursesHtml = (d.stats.courses || []).map(c => `<div class="pd-course-item">
+          <span>${c.name} <span class="text-muted">(${c.code})</span></span>
+          <span class="badge" style="background:${c.program==='PPL'?'#eef2ff':'#fff7ed'};color:${c.program==='PPL'?'#4f46e5':'#ea580c'}">${c.program} · ${c.students} mhs</span>
+        </div>`).join('') || '<div class="text-muted small py-2">Belum mengampu kelas.</div>';
+    } else if (d.role === 'student') {
+      statsHtml = `
+        <div class="pd-stats">
+          <div class="pd-stat"><div class="pd-stat-value text-primary">${d.stats.total_courses}</div><div class="pd-stat-label">Kelas Diikuti</div></div>
+          <div class="pd-stat"><div class="pd-stat-value text-success">${d.stats.gpa ?? '—'}</div><div class="pd-stat-label">IPK</div></div>
+          <div class="pd-stat"><div class="pd-stat-value text-warning">${d.stats.total_submissions}</div><div class="pd-stat-label">Tugas</div></div>
+        </div>`;
+      coursesHtml = (d.stats.courses || []).map(c => `<div class="pd-course-item">
+          <span>${c.name} <span class="text-muted">(${c.code})</span></span>
+          <span class="badge" style="background:${c.program==='PPL'?'#eef2ff':'#fff7ed'};color:${c.program==='PPL'?'#4f46e5':'#ea580c'}">${c.program}</span>
+        </div>`).join('') || '<div class="text-muted small py-2">Belum mengikuti kelas.</div>';
+    }
+
+    document.getElementById('userDetailBody').innerHTML = `
+      <div class="pd-hero">
+        <div class="pd-banner role-${d.role}"></div>
+      </div>
+      <div class="pd-body">
+        <div class="d-flex align-items-end gap-3 mb-2">
+          <div class="pd-avatar-wrap">
+            <img src="${d.avatar}" class="pd-avatar-img">
+          </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+          <div>
+            <h5 class="fw-800 mb-1">${d.full_name} ${progBadge}</h5>
+            <span class="pd-role-badge ${rm.cls}">${rm.label}</span>
+            <span class="badge rounded-pill ms-1 ${d.is_active ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}">${d.is_active ? 'Aktif' : 'Nonaktif'}</span>
+          </div>
+        </div>
+
+        <div class="pd-contact-item"><i class="bi bi-envelope-fill text-primary"></i>${d.email}</div>
+        <div class="pd-contact-item"><i class="bi bi-telephone-fill text-success"></i>${d.phone || '—'}</div>
+        <div class="pd-contact-item"><i class="bi bi-person-vcard-fill text-warning"></i>${d.nip_nim || '—'}</div>
+        <div class="pd-contact-item"><i class="bi bi-bank text-info"></i>${d.institution}</div>
+        <div class="pd-contact-item"><i class="bi bi-clock-history text-secondary"></i>Login: ${d.last_login}</div>
+        <div class="pd-contact-item"><i class="bi bi-calendar-plus text-secondary"></i>Bergabung: ${d.created_at}</div>
+
+        ${statsHtml}
+        ${coursesHtml ? `<hr><div class="fw-600 small mb-1">${d.role === 'lecturer' ? 'Daftar Kelas' : 'Kelas Diikuti'}</div>${coursesHtml}` : ''}
+      </div>
+    `;
+  } catch(e) {
+    document.getElementById('userDetailBody').innerHTML = '<div class="alert alert-danger m-4">Terjadi kesalahan.</div>';
+  }
+}
+
+function toggleEditProgram() {
+  const role = document.getElementById('editRole').value;
+  document.getElementById('editProgramWrap').classList.toggle('d-none', role === 'director');
+}
+
+function openEditModal(u) {
+  document.getElementById('editUserForm').action = `/director/users/${u.id}/edit`;
+  document.getElementById('editFullName').value = u.full_name || '';
+  document.getElementById('editUsername').value = u.username || '';
+  document.getElementById('editEmail').value = u.email || '';
+  document.getElementById('editPhone').value = u.phone || '';
+  document.getElementById('editNipNim').value = u.nip_nim || '';
+  document.getElementById('editRole').value = u.role || 'student';
+  document.getElementById('editProgram').value = u.program || 'PPL';
+  toggleEditProgram();
+  new bootstrap.Modal(document.getElementById('modalEditUser')).show();
+}
+
+function confirmDelete(uid, name) {
+  document.getElementById('deleteUserName').textContent = name;
+  document.getElementById('deleteUserMsg').innerHTML = '';
+  document.getElementById('deleteUserForm').action = `/director/users/${uid}/delete`;
+  new bootstrap.Modal(document.getElementById('modalDeleteUser')).show();
+}
+</script>
+{% endblock %}

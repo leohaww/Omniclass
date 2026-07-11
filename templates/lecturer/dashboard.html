@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard Dosen — OmniClass{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="welcome-banner mb-4">
+  <div class="welcome-text">
+    <h4 class="fw-700 mb-1">Halo, {{ current_user.full_name.split()[0] }}! 👋</h4>
+    <p class="mb-0 text-muted">Pantau aktivitas mahasiswa dan kelola kelas Anda</p>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-blue">
+      <div class="stat-icon"><i class="bi bi-book-fill"></i></div>
+      <div class="stat-value">{{ my_courses|length }}</div>
+      <div class="stat-label">Kelas Aktif</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-green">
+      <div class="stat-icon"><i class="bi bi-calendar-check-fill"></i></div>
+      <div class="stat-value">{{ today_schedules|length }}</div>
+      <div class="stat-label">Jadwal Hari Ini</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-orange">
+      <div class="stat-icon"><i class="bi bi-clipboard2-check"></i></div>
+      <div class="stat-value">{{ ungraded }}</div>
+      <div class="stat-label">Belum Dinilai</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-purple">
+      <div class="stat-icon"><i class="bi bi-file-earmark-check"></i></div>
+      <div class="stat-value">{{ pending_permits }}</div>
+      <div class="stat-label">Izin Pending</div>
+    </div>
+  </div>
+</div>
+
+{% if pending_permits > 0 %}
+<div class="alert alert-warning d-flex align-items-center gap-2 mb-4" style="border-radius:14px">
+  <i class="bi bi-bell-fill flex-shrink-0 fs-5"></i>
+  <div>
+    <strong>{{ pending_permits }} pengajuan izin</strong> mahasiswa menunggu persetujuan Anda.
+    <a href="{{ url_for('lecturer.permits') }}" class="ms-2 fw-600">Review Sekarang →</a>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+  <!-- Today Schedule -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-calendar-day-fill me-2 text-primary"></i>Jadwal Hari Ini</h6>
+        <span class="badge bg-primary">{{ today_schedules|length }}</span>
+      </div>
+      <div class="card-body p-0">
+        {% for item in today_schedules %}
+        <div class="schedule-item px-3 py-3 border-bottom">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h6 class="fw-600 mb-1">{{ item.course.name }}</h6>
+              <div class="d-flex flex-wrap gap-2 text-muted small">
+                <span><i class="bi bi-clock me-1"></i>{{ item.schedule.time_range }}</span>
+                <span><i class="bi bi-people me-1"></i>{{ item.course.student_count }} mhs</span>
+                <span><i class="bi bi-geo-alt me-1"></i>{{ item.course.room or 'TBD' }}</span>
+              </div>
+            </div>
+            {% if item.session and item.session.is_open %}
+            <a href="{{ url_for('lecturer.attendance_session', sid=item.session.id) }}" class="btn btn-sm btn-success">
+              <i class="bi bi-broadcast-pin me-1"></i>Live
+            </a>
+            {% elif item.session %}
+            <span class="badge bg-secondary">Selesai</span>
+            {% else %}
+            <form method="POST" action="{{ url_for('lecturer.start_session') }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="course_id" value="{{ item.course.id }}">
+              <input type="hidden" name="method" value="qr_code">
+              <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Mulai Absen</button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi bi-calendar-x display-4 d-block mb-3 opacity-25"></i>
+          <p class="small">Tidak ada kelas hari ini</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Upcoming Assignments -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-clipboard2-check-fill me-2 text-warning"></i>Tugas Aktif</h6>
+        <a href="{{ url_for('lecturer.create_assignment') }}" class="btn btn-sm btn-warning text-dark fw-600">
+          <i class="bi bi-plus me-1"></i>Buat Tugas
+        </a>
+      </div>
+      <div class="list-group list-group-flush">
+        {% for asgn in upcoming_assignments %}
+        <div class="list-group-item px-3 py-3">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="fw-500 mb-1">{{ asgn.title }}</div>
+              <div class="d-flex gap-2 flex-wrap">
+                <span class="text-muted small"><i class="bi bi-book me-1"></i>{{ asgn.course.name }}</span>
+                <span class="badge bg-warning-soft text-warning small">
+                  <i class="bi bi-clock me-1"></i>{{ asgn.due_date.strftime('%d %b') }}
+                </span>
+              </div>
+            </div>
+            <div class="text-end">
+              <div class="fw-700 text-primary small">{{ asgn.submission_count }}</div>
+              <div class="text-muted" style="font-size:.65rem">dikumpulkan</div>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi bi-clipboard-check display-4 d-block mb-3 opacity-25"></i>
+          <p class="small">Belum ada tugas aktif</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Check-ins from Students -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-qr-code-scan me-2 text-success"></i>Absensi Terbaru Mahasiswa</h6>
+        <span class="badge bg-success-soft text-success">Real-time</span>
+      </div>
+      <div class="list-group list-group-flush">
+        {% for att in recent_checkins %}
+        <div class="list-group-item px-3 py-2">
+          <div class="d-flex align-items-center gap-2">
+            <img src="{{ att.student.avatar_url }}" class="rounded-circle" width="30" height="30" onerror="this.src='/static/img/default_avatar.svg'">
+            <div class="flex-grow-1 min-w-0">
+              <div class="fw-500 small text-truncate">{{ att.student.full_name }}</div>
+              <div class="text-muted" style="font-size:.68rem">
+                <i class="bi bi-book me-1"></i>{{ att.course.name }}
+              </div>
+            </div>
+            <div class="text-end flex-shrink-0">
+              <span class="badge bg-success-soft text-success" style="font-size:10px">
+                <i class="bi bi-check2 me-1"></i>Hadir
+              </span>
+              <div class="text-muted" style="font-size:.65rem;margin-top:2px">
+                {{ att.check_in_time.strftime('%H:%M') if att.check_in_time else '—' }}
+              </div>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted small">
+          <i class="bi bi-qr-code-scan fs-3 d-block mb-2 opacity-25"></i>Belum ada check-in hari ini
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Submissions from Students -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-send-fill me-2 text-primary"></i>Pengumpulan Tugas Terbaru</h6>
+        {% if ungraded > 0 %}
+        <span class="badge bg-danger">{{ ungraded }} belum dinilai</span>
+        {% endif %}
+      </div>
+      <div class="list-group list-group-flush">
+        {% for sub in recent_subs %}
+        <div class="list-group-item px-3 py-2">
+          <div class="d-flex align-items-center gap-2">
+            <img src="{{ sub.student.avatar_url }}" class="rounded-circle" width="30" height="30" onerror="this.src='/static/img/default_avatar.svg'">
+            <div class="flex-grow-1 min-w-0">
+              <div class="fw-500 small text-truncate">{{ sub.student.full_name }}</div>
+              <div class="text-muted" style="font-size:.68rem">
+                {{ sub.assignment.title }} · {{ sub.assignment.course.name }}
+              </div>
+            </div>
+            <div class="text-end flex-shrink-0">
+              {% if sub.score is not none %}
+              <span class="badge bg-success-soft text-success" style="font-size:10px">{{ sub.score }}/{{ sub.assignment.max_score }}</span>
+              {% else %}
+              <a href="{{ url_for('lecturer.submissions', aid=sub.assignment_id) }}" class="btn btn-xs btn-warning btn-sm py-0 px-2" style="font-size:11px">
+                <i class="bi bi-star-fill me-1"></i>Nilai
+              </a>
+              {% endif %}
+              <div class="text-muted" style="font-size:.65rem;margin-top:2px">{{ sub.submitted_at|time_ago }}</div>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted small">
+          <i class="bi bi-inbox fs-3 d-block mb-2 opacity-25"></i>Belum ada pengumpulan
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- My Courses -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-600"><i class="bi bi-book-fill me-2 text-primary"></i>Kelas Saya</h6>
+        <a href="{{ url_for('lecturer.courses') }}" class="btn btn-sm btn-outline-primary">Kelola Kelas</a>
+      </div>
+      <div class="row g-0 p-3">
+        {% for course in my_courses %}
+        <div class="col-sm-6 col-lg-3 p-2">
+          <div class="course-mini-card">
+            <div class="course-mini-header bg-gradient-{{ loop.index0 % 4 }}" style="padding:12px 14px">
+              <div class="fw-700 text-white small">{{ course.code }}</div>
+            </div>
+            <div class="p-3">
+              <div class="fw-600 small mb-2 text-truncate">{{ course.name }}</div>
+              <div class="d-flex justify-content-between text-muted small mb-2">
+                <span><i class="bi bi-people me-1"></i>{{ course.student_count }}</span>
+                <span><i class="bi bi-star me-1"></i>{{ course.credits }} SKS</span>
+              </div>
+              <a href="{{ url_for('lecturer.course_detail', cid=course.id) }}" class="btn btn-sm btn-outline-primary w-100">
+                <i class="bi bi-arrow-right me-1"></i>Kelola
+              </a>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="col-12 text-center py-4 text-muted small">
+          <i class="bi bi-book-half fs-3 d-block mb-2 opacity-25"></i>
+          Belum ada kelas. <a href="{{ url_for('lecturer.courses') }}">Tambah kelas baru →</a>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

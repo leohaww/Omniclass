@@ -1,0 +1,263 @@
+{% extends 'base.html' %}
+{% block title %}Kehadiran — OmniClass{% endblock %}
+{% block page_title %}Kehadiran Saya{% endblock %}
+
+{% block extra_css %}
+<style>
+.qr-scanner-area { border: 3px dashed #4f46e5; border-radius: 12px; padding: 20px; text-align:center; background: #f8f7ff; cursor:pointer; transition: all .3s; }
+.qr-scanner-area:hover { border-color: #7c3aed; background: #f0eeff; }
+.scanner-preview { width:100%; max-width:300px; height:220px; border-radius:10px; object-fit:cover; display:none; }
+.att-status-card { border-radius:12px; padding:12px 16px; display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+.att-status-hadir { background:#f0fdf4; border-left:4px solid #22c55e; }
+.att-status-alfa { background:#fef2f2; border-left:4px solid #ef4444; }
+.att-status-izin { background:#fffbeb; border-left:4px solid #f59e0b; }
+.att-status-sakit { background:#ecfeff; border-left:4px solid #06b6d4; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- QR Scanner -->
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600"><i class="bi bi-qr-code-scan me-2 text-primary"></i>Scan QR Absensi</h6></div>
+      <div class="card-body">
+        <div id="scannerArea" class="qr-scanner-area mb-3" onclick="startScanner()">
+          <i class="bi bi-camera display-4 text-primary d-block mb-2"></i>
+          <p class="text-muted mb-0">Tap untuk buka kamera</p>
+          <small class="text-muted">Scan QR dari layar dosen</small>
+        </div>
+        <video id="scannerVideo" class="scanner-preview w-100 mb-3"></video>
+        <canvas id="scannerCanvas" style="display:none"></canvas>
+
+        <div class="mb-3">
+          <label class="form-label fw-500 small">Atau masukkan kode manual</label>
+          <div class="input-group">
+            <input type="text" id="manualToken" class="form-control" placeholder="Kode QR...">
+            <button class="btn btn-primary" onclick="submitManualToken()">
+              <i class="bi bi-check2"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-500 small">Mata Kuliah</label>
+          <select id="courseSelect" class="form-select">
+            <option value="">-- Pilih Mata Kuliah --</option>
+            {% for course in courses %}
+            <option value="{{ course.id }}">{{ course.code }} — {{ course.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div id="scanResult" class="alert d-none mt-3"></div>
+
+        <button class="btn btn-outline-secondary w-100 mt-2" id="stopScanBtn" style="display:none" onclick="stopScanner()">
+          <i class="bi bi-stop-circle me-1"></i>Stop Kamera
+        </button>
+      </div>
+    </div>
+
+    <!-- Izin / Sakit -->
+    <div class="card mt-3">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-file-earmark-medical display-5 text-info mb-3 d-block"></i>
+        <h6 class="fw-600 mb-2">Tidak Bisa Hadir?</h6>
+        <p class="text-muted small mb-3">Ajukan izin atau sakit dengan bukti dokumen</p>
+        <a href="{{ url_for('student.submit_permit') }}" class="btn btn-info text-white w-100">
+          <i class="bi bi-file-earmark-plus me-2"></i>Ajukan Perizinan
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Attendance Records -->
+  <div class="col-lg-8">
+    <!-- Course Selector -->
+    <form method="GET" class="card mb-4">
+      <div class="card-body p-3 d-flex gap-2">
+        <select name="course_id" class="form-select" onchange="this.form.submit()">
+          <option value="">-- Pilih Mata Kuliah --</option>
+          {% for course in courses %}
+          <option value="{{ course.id }}" {% if selected_course and selected_course.id == course.id %}selected{% endif %}>
+            {{ course.code }} — {{ course.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
+
+    {% if selected_course %}
+    <!-- Summary -->
+    <div class="row g-3 mb-4">
+      <div class="col-3">
+        <div class="text-center p-3 rounded bg-success-soft">
+          <div class="fw-700 fs-4 text-success">{{ summary.present }}</div>
+          <div class="text-muted small">Hadir</div>
+        </div>
+      </div>
+      <div class="col-3">
+        <div class="text-center p-3 rounded bg-warning-soft">
+          <div class="fw-700 fs-4 text-warning">{{ summary.izin }}</div>
+          <div class="text-muted small">Izin/Sakit</div>
+        </div>
+      </div>
+      <div class="col-3">
+        <div class="text-center p-3 rounded bg-danger-soft">
+          <div class="fw-700 fs-4 text-danger">{{ summary.alfa }}</div>
+          <div class="text-muted small">Alfa</div>
+        </div>
+      </div>
+      <div class="col-3">
+        <div class="text-center p-3 rounded {% if summary.rate >= 75 %}bg-success-soft{% else %}bg-danger-soft{% endif %}">
+          <div class="fw-700 fs-4 {% if summary.rate >= 75 %}text-success{% else %}text-danger{% endif %}">{{ summary.rate }}%</div>
+          <div class="text-muted small">Kehadiran</div>
+        </div>
+      </div>
+    </div>
+    {% if summary.rate < 75 %}
+    <div class="alert alert-warning mb-4">
+      <i class="bi bi-exclamation-triangle-fill me-2"></i>
+      <strong>Perhatian:</strong> Kehadiran Anda di bawah 75%. Segera hubungi dosen pengampu.
+    </div>
+    {% endif %}
+
+    <!-- Sessions Table -->
+    <div class="card">
+      <div class="card-header"><h6 class="mb-0 fw-600">Riwayat Absensi — {{ selected_course.name }}</h6></div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-head">
+            <tr><th>#</th><th>Tanggal</th><th>Topik</th><th>Check-in</th><th class="text-center">Status</th></tr>
+          </thead>
+          <tbody>
+            {% for item in att_data %}
+            <tr>
+              <td><span class="badge bg-primary rounded-pill">#{{ item.session.meeting_number }}</span></td>
+              <td>{{ item.session.session_date.strftime('%d %b %Y') }}</td>
+              <td class="text-muted small">{{ item.session.topic or '—' }}</td>
+              <td>
+                {% if item.record and item.record.check_in_time %}
+                <small class="text-success">{{ item.record.check_in_time.strftime('%H:%M') }}</small>
+                {% else %}<small class="text-muted">—</small>{% endif %}
+              </td>
+              <td class="text-center">
+                {% if item.record %}
+                <span class="badge bg-{{ item.record.status_color }}-soft text-{{ item.record.status_color }}">
+                  {{ item.record.status | title }}
+                </span>
+                {% else %}
+                <span class="badge bg-secondary-soft text-secondary">Belum</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center py-5 text-muted">Belum ada sesi absensi</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-calendar-check display-3 d-block mb-3"></i>
+      <p>Pilih mata kuliah untuk melihat riwayat kehadiran</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CHECKIN_URL = '{{ url_for("student.checkin") }}';
+const CSRF = '{{ csrf_token() }}';
+let scannerStream = null;
+let scanInterval = null;
+
+async function startScanner() {
+  try {
+    scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const video = document.getElementById('scannerVideo');
+    video.srcObject = scannerStream;
+    video.style.display = 'block';
+    video.play();
+    document.getElementById('scannerArea').style.display = 'none';
+    document.getElementById('stopScanBtn').style.display = 'block';
+
+    // Simulate QR scanning (real implementation would use jsQR or ZXing)
+    scanInterval = setInterval(() => scanFrame(), 500);
+  } catch(e) {
+    alert('Tidak dapat mengakses kamera. Gunakan input manual.');
+  }
+}
+
+function scanFrame() {
+  const video = document.getElementById('scannerVideo');
+  const canvas = document.getElementById('scannerCanvas');
+  if(video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    // Here you'd use jsQR to decode - omitted for brevity
+  }
+}
+
+function stopScanner() {
+  if(scannerStream) {
+    scannerStream.getTracks().forEach(t => t.stop());
+    scannerStream = null;
+  }
+  clearInterval(scanInterval);
+  document.getElementById('scannerVideo').style.display = 'none';
+  document.getElementById('scannerArea').style.display = 'block';
+  document.getElementById('stopScanBtn').style.display = 'none';
+}
+
+async function submitManualToken() {
+  const token = document.getElementById('manualToken').value.trim();
+  const courseId = document.getElementById('courseSelect').value;
+
+  if(!token || !courseId) {
+    showScanResult('Pilih mata kuliah dan masukkan token QR.', 'warning');
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append('csrf_token', CSRF);
+  fd.append('token', token);
+  fd.append('course_id', courseId);
+
+  if(navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(async pos => {
+      fd.append('latitude', pos.coords.latitude);
+      fd.append('longitude', pos.coords.longitude);
+      await doCheckin(fd);
+    }, async () => await doCheckin(fd));
+  } else {
+    await doCheckin(fd);
+  }
+}
+
+async function doCheckin(fd) {
+  try {
+    const res = await fetch(CHECKIN_URL, { method: 'POST', body: fd });
+    const data = await res.json();
+    showScanResult(data.message, data.success ? 'success' : 'danger');
+    if(data.success) {
+      document.getElementById('manualToken').value = '';
+      setTimeout(() => location.reload(), 2000);
+    }
+  } catch(e) {
+    showScanResult('Gagal terhubung ke server.', 'danger');
+  }
+}
+
+function showScanResult(msg, type) {
+  const el = document.getElementById('scanResult');
+  el.className = `alert alert-${type}`;
+  el.innerHTML = `<i class="bi bi-${type === 'success' ? 'check-circle' : 'exclamation-triangle'}-fill me-2"></i>${msg}`;
+}
+</script>
+{% endblock %}
