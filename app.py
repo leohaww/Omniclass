@@ -18,6 +18,13 @@ from db import (db, login_manager, notify, notify_many,
                 Assignment, Submission, Grade,
                 Notification, Announcement, AuditLog)
 
+# init_db menyediakan init global (buat database + tabel + schema + seeder)
+try:
+    from init_db import init_db
+except Exception:
+    init_db = None
+
+
 # ── App & Config ─────────────────────────────────────────────────
 app = Flask(__name__)
 app.config.update(
@@ -34,6 +41,7 @@ app.config.update(
     MAX_CONTENT_LENGTH=50*1024*1024,
     UPLOAD_FOLDER=os.path.join(os.path.dirname(__file__),'uploads'),
 )
+
 db.init_app(app)
 login_manager.init_app(app)
 csrf = CSRFProtect(app)
@@ -80,6 +88,47 @@ def save_upload(file_storage, subfolder):
     }
 
 # ── Schema auto-migration (adds new columns/enum values on existing DBs) ──
+#
+# NOTE:
+# Fungsi ensure_database_exists() sekarang dipindahkan ke init_db.py.
+# Di sini masih dipertahankan agar backward-compatibility, tetapi
+# app.py tidak wajib memanggilnya lagi.
+def ensure_database_exists():
+    """Create MySQL database if it doesn't exist yet.
+
+    This prevents startup failure when DB_NAME hasn't been created.
+    """
+    import pymysql
+
+    db_user = os.getenv('DB_USER', 'root')
+    db_password = os.getenv('DB_PASSWORD', '')
+    db_host = os.getenv('DB_HOST', 'localhost')
+    db_port = int(os.getenv('DB_PORT', '3306'))
+    db_name = os.getenv('DB_NAME', 'omniclass_db')
+
+    # Connect without selecting the target database
+    conn = pymysql.connect(
+        host=db_host,
+        user=db_user,
+        password=db_password,
+        port=db_port,
+        autocommit=True,
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME=%s",
+                (db_name,),
+            )
+            exists = cur.fetchone() is not None
+            if not exists:
+                cur.execute(f"CREATE DATABASE `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+                print(f"✅ MySQL database created: {db_name}")
+    finally:
+        conn.close()
+
+
 def ensure_schema():
     from sqlalchemy import text, inspect as sa_inspect
     try:
@@ -1998,24 +2047,31 @@ def _monthly_trend(iid):
 
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        ensure_schema()
-        print("✅ Tables created/verified. Running OmniClass...")
+    # Dev run: inisialisasi DB + tabel + schema + seeder (jika OMNICLASS_SEED=1)
+    if init_db:
+        init_db()
+    else:
+        with app.app_context():
+            db.create_all()
+            ensure_schema()
+
+    print("✅ OmniClass starting...")
     app.run(debug=True, host='0.0.0.0', port=5000)
 else:
-    try:
-        with app.app_context():
-            try:
+    # Production (gunicorn): inisialisasi DB global dengan safety.
+    # Seeder biasanya tidak dijalankan kecuali OMNICLASS_SEED=1.
+    if init_db:
+        try:
+            init_db()
+        except Exception as _e:
+            print(f"⚠️  Startup init_db skipped: {_e}")
+    else:
+        try:
+            with app.app_context():
                 db.create_all()
-            except Exception as ex:
-                msg = str(ex)
-                if '1813' in msg and 'DISCARD the tablespace' in msg:
-                    # Jangan crash saat aplikasi start; schema check & app tetap bisa jalan.
-                    print(f"⚠️  db.create_all() gagal karena tablespace (1813), skip init sementara: {msg}")
-                else:
-                    raise
-            ensure_schema()
-    except Exception as _e:
-        print(f"⚠️  Startup schema init skipped: {_e}")
+                ensure_schema()
+        except Exception as _e:
+            print(f"⚠️  Startup init skipped: {_e}")
+
+
 
