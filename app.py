@@ -1,1399 +1,2021 @@
-"""
-========================================================
-  ENTERPRISE PORTFOLIO WEB APP
-  File: app.py
-  Desc: Main application entry point — Flask routes,
-        middleware, auth, and blueprint registration.
-========================================================
-"""
-
+# ═══════════════════════════════════════════════════════════════
+#  OmniClass — app.py  (All roles fully connected)
+# ═══════════════════════════════════════════════════════════════
 import os
-import json
-import hashlib
-import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, date, time, timedelta
 from functools import wraps
+from dotenv import load_dotenv
+load_dotenv()
 
-from flask import (
-    Flask, render_template, request, redirect,
-    url_for, flash, session, jsonify, send_from_directory,
-    abort
-)
-from werkzeug.utils import secure_filename
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import (Flask, Blueprint, render_template, redirect, url_for,
+                   flash, request, jsonify)
+from flask_login import login_user, logout_user, login_required, current_user
+from flask_wtf.csrf import CSRFProtect
 
-from db import (
-    init_db, get_db,
-    # User
-    create_user, get_user_by_email, get_user_by_id, get_all_users, update_user, delete_user,
-    # Projects
-    create_project, get_all_projects, get_project_by_id, update_project, delete_project,
-    # Skills
-    create_skill, get_all_skills, update_skill, delete_skill,
-    # Experience
-    create_experience, get_all_experiences, update_experience, delete_experience,
-    # Education
-    create_education, get_all_educations, update_education, delete_education,
-    # Certificates
-    create_certificate, get_all_certificates, update_certificate, delete_certificate,
-    # Contact
-    create_contact_message, get_all_messages, get_unread_count, mark_message_read,
-    # Audit
-    log_activity, get_audit_logs,
-    # Settings
-    get_settings, update_setting,
-    # Analytics
-    log_visitor, get_visitor_stats,
-    # Testimonials
-    create_testimonial, get_all_testimonials, update_testimonial, delete_testimonial,
-    # Services
-    create_service, get_all_services, update_service, delete_service,
-    # Blog
-    create_blog_post, get_all_blog_posts, get_blog_post_by_slug, get_blog_post_by_id,
-    update_blog_post, delete_blog_post, increment_blog_views,
-)
+from db import (db, login_manager, notify, notify_many,
+                User, Institution, Course, enrollments, Schedule,
+                AttendanceSession, Attendance, PermitRequest,
+                Assignment, Submission, Grade,
+                Notification, Announcement, AuditLog)
 
-# ─────────────────────────────────────────────
-#  App Factory
-# ─────────────────────────────────────────────
+# ── App & Config ─────────────────────────────────────────────────
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
-app.config["UPLOAD_FOLDER"] = os.path.join(os.path.dirname(__file__), "static", "uploads")
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
-app.config["ALLOWED_EXTENSIONS"] = {"png", "jpg", "jpeg", "gif", "webp", "pdf", "svg"}
+app.config.update(
+    SECRET_KEY=os.getenv('SECRET_KEY','omniclass-dev-secret-2024'),
+    SQLALCHEMY_DATABASE_URI=(
+        f"mysql+pymysql://{os.getenv('DB_USER','root')}:"
+        f"{os.getenv('DB_PASSWORD','')}@"
+        f"{os.getenv('DB_HOST','localhost')}:"
+        f"{os.getenv('DB_PORT','3306')}/"
+        f"{os.getenv('DB_NAME','omniclass_db')}?charset=utf8mb4"),
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    SQLALCHEMY_ENGINE_OPTIONS={'pool_recycle':300,'pool_pre_ping':True},
+    WTF_CSRF_ENABLED=True,
+    MAX_CONTENT_LENGTH=50*1024*1024,
+    UPLOAD_FOLDER=os.path.join(os.path.dirname(__file__),'uploads'),
+)
+db.init_app(app)
+login_manager.init_app(app)
+csrf = CSRFProtect(app)
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+IMAGE_EXTS = {'png','jpg','jpeg','gif','webp','bmp','svg'}
+ZIP_EXTS   = {'zip','rar','7z'}
+DOC_EXTS   = {'pdf','doc','docx','ppt','pptx','xls','xlsx','txt','csv'}
 
-# ─────────────────────────────────────────────
-#  Init DB (needed for Gunicorn)
-# ─────────────────────────────────────────────
-with app.app_context():
-    init_db()
+def file_kind(filename):
+    ext = (filename.rsplit('.',1)[-1] if '.' in filename else '').lower()
+    if ext in IMAGE_EXTS: return 'image'
+    if ext in ZIP_EXTS:   return 'zip'
+    if ext in DOC_EXTS:   return 'document'
+    return 'other'
 
-# ─────────────────────────────────────────────
-#  Helpers
-# ─────────────────────────────────────────────
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in app.config["ALLOWED_EXTENSIONS"]
+def human_size(num_bytes):
+    if not num_bytes: return '—'
+    for unit in ['B','KB','MB','GB']:
+        if num_bytes < 1024: return f"{num_bytes:.1f} {unit}" if unit!='B' else f"{int(num_bytes)} {unit}"
+        num_bytes /= 1024
+    return f"{num_bytes:.1f} TB"
 
+def save_upload(file_storage, subfolder):
+    """Save an uploaded file under static/uploads/<subfolder>/ and return metadata."""
+    from werkzeug.utils import secure_filename
+    import uuid
+    orig_name = file_storage.filename
+    ext = orig_name.rsplit('.',1)[-1].lower() if '.' in orig_name else ''
+    safe_base = secure_filename(orig_name) or 'file'
+    stored_name = f"{uuid.uuid4().hex}_{safe_base}"
+    folder = os.path.join(app.static_folder, 'uploads', subfolder)
+    os.makedirs(folder, exist_ok=True)
+    full_path = os.path.join(folder, stored_name)
+    file_storage.save(full_path)
+    size = os.path.getsize(full_path)
+    return {
+        'url': f"/static/uploads/{subfolder}/{stored_name}",
+        'name': orig_name,
+        'ext': ext,
+        'size': size,
+        'kind': file_kind(orig_name),
+        'disk_path': full_path,
+    }
 
-def save_upload(file, subfolder="general"):
-    if file and allowed_file(file.filename):
-        folder = os.path.join(app.config["UPLOAD_FOLDER"], subfolder)
-        os.makedirs(folder, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{ts}_{secure_filename(file.filename)}"
-        path = os.path.join(folder, filename)
-        file.save(path)
-        return f"uploads/{subfolder}/{filename}"
-    return None
+# ── Schema auto-migration (adds new columns/enum values on existing DBs) ──
+def ensure_schema():
+    from sqlalchemy import text, inspect as sa_inspect
+    try:
+        insp = sa_inspect(db.engine)
+        with db.engine.begin() as conn:
+            course_cols = [c['name'] for c in insp.get_columns('courses')]
+            if 'program' not in course_cols:
+                conn.execute(text(
+                    "ALTER TABLE courses ADD COLUMN program ENUM('PPL','DM') NOT NULL DEFAULT 'PPL'"))
+            user_cols = [c['name'] for c in insp.get_columns('users')]
+            if 'program' not in user_cols:
+                conn.execute(text(
+                    "ALTER TABLE users ADD COLUMN program ENUM('PPL','DM') NULL"))
+            sub_cols = [c['name'] for c in insp.get_columns('submissions')]
+            if 'revision_notes' not in sub_cols:
+                conn.execute(text("ALTER TABLE submissions ADD COLUMN revision_notes TEXT"))
+            if 'revision_count' not in sub_cols:
+                conn.execute(text("ALTER TABLE submissions ADD COLUMN revision_count INT DEFAULT 0"))
+            if 'last_revision_at' not in sub_cols:
+                conn.execute(text("ALTER TABLE submissions ADD COLUMN last_revision_at DATETIME NULL"))
+            if 'file_size' not in sub_cols:
+                conn.execute(text("ALTER TABLE submissions ADD COLUMN file_size INT NULL"))
+            conn.execute(text(
+                "ALTER TABLE submissions MODIFY COLUMN status "
+                "ENUM('submitted','graded','returned','revision') DEFAULT 'submitted'"))
+    except Exception as ex:
+        print(f"⚠️  Schema check skipped/failed (non-fatal): {ex}")
 
+# ── Jinja globals / filters ───────────────────────────────────────
+@app.template_global('now')
+def _now(): return datetime.utcnow()
 
-def login_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if "user_id" not in session:
-            flash("Silakan login terlebih dahulu.", "warning")
-            return redirect(url_for("auth_login"))
-        return f(*args, **kwargs)
-    return decorated
+@app.template_filter('date_id')
+def _date_id(dt):
+    MO={1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'Mei',6:'Jun',
+        7:'Jul',8:'Agu',9:'Sep',10:'Okt',11:'Nov',12:'Des'}
+    return f"{dt.day} {MO[dt.month]} {dt.year}" if dt else '—'
 
-
-def role_required(*roles):
-    def decorator(f):
-        @wraps(f)
-        def decorated(*args, **kwargs):
-            if "user_id" not in session:
-                return redirect(url_for("auth_login"))
-            if session.get("role") not in roles:
-                abort(403)
-            return f(*args, **kwargs)
-        return decorated
-    return decorator
-
-
-def log_action(action, detail=""):
-    if "user_id" in session:
-        log_activity(session["user_id"], action, detail, request.remote_addr, request.user_agent.string)
-
+@app.template_filter('time_ago')
+def _time_ago(dt):
+    if not dt: return '—'
+    d=datetime.utcnow()-dt
+    if d.seconds<60: return 'Baru saja'
+    if d.seconds<3600: return f"{d.seconds//60} mnt lalu"
+    if d.days<1: return f"{d.seconds//3600} jam lalu"
+    if d.days<30: return f"{d.days} hari lalu"
+    return dt.strftime('%d %b %Y')
 
 @app.context_processor
 def inject_globals():
-    settings = get_settings()
-    unread = get_unread_count() if "user_id" in session else 0
-    return dict(
-        site_settings=settings,
-        unread_messages=unread,
-        current_user=get_user_by_id(session["user_id"]) if "user_id" in session else None,
-        now=datetime.now(),
-    )
+    count = 0
+    if current_user.is_authenticated:
+        count = Notification.query.filter_by(user_id=current_user.id, is_read=False).count()
+    return dict(app_name=os.getenv('APP_NAME','OmniClass'), unread_notif_count=count)
 
-
-# ─────────────────────────────────────────────
-#  Visitor Analytics Middleware
-# ─────────────────────────────────────────────
-@app.before_request
-def track_visitor():
-    if not request.path.startswith("/static") and not request.path.startswith("/admin"):
-        log_visitor(
-            ip=request.remote_addr,
-            path=request.path,
-            user_agent=request.user_agent.string,
-            referrer=request.referrer or ""
-        )
-
-
-# ─────────────────────────────────────────────
-#  PUBLIC ROUTES — Portfolio
-# ─────────────────────────────────────────────
-@app.route("/")
-def index():
-    projects     = get_all_projects(featured_only=True, limit=6)
-    skills       = get_all_skills()
-    experiences  = get_all_experiences()
-    educations   = get_all_educations()
-    certificates = get_all_certificates()
-    stats        = get_visitor_stats()
-    settings     = get_settings()
-    testimonials = get_all_testimonials(featured_only=True)
-    services     = get_all_services()
-    recent_posts = get_all_blog_posts(status="published", limit=3)
-    return render_template(
-        "index.html",
-        projects=projects,
-        skills=skills,
-        experiences=experiences,
-        educations=educations,
-        certificates=certificates,
-        stats=stats,
-        settings=settings,
-        testimonials=testimonials,
-        services=services,
-        recent_posts=recent_posts,
-    )
-
-
-@app.route("/projects")
-def projects():
-    category = request.args.get("category", "")
-    search = request.args.get("q", "")
-    all_projects = get_all_projects(category=category, search=search)
-    return render_template("projects.html", projects=all_projects, category=category, search=search)
-
-
-@app.route("/projects/<int:project_id>")
-def project_detail(project_id):
-    project = get_project_by_id(project_id)
-    if not project:
-        abort(404)
-    return render_template("project_detail.html", project=project)
-
-
-@app.route("/contact", methods=["GET", "POST"])
-def contact():
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        email = request.form.get("email", "").strip()
-        subject = request.form.get("subject", "").strip()
-        message = request.form.get("message", "").strip()
-        if not all([name, email, subject, message]):
-            flash("Semua field wajib diisi.", "danger")
-        else:
-            create_contact_message(name, email, subject, message, request.remote_addr)
-            flash("Pesan Anda berhasil dikirim! Kami akan segera menghubungi Anda.", "success")
-            return redirect(url_for("contact"))
-    return render_template("contact.html")
-
-
-# ─────────────────────────────────────────────
-#  AUTH ROUTES
-# ─────────────────────────────────────────────
-@app.route("/auth/login", methods=["GET", "POST"])
-def auth_login():
-    if "user_id" in session:
-        return redirect(url_for("admin_dashboard"))
-
-    if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "")
-        otp_code = request.form.get("otp_code", "").strip()
-
-        user = get_user_by_email(email)
-        if user and check_password_hash(user["password_hash"], password):
-            # MFA check (simplified — in production: TOTP via pyotp)
-            if user["mfa_enabled"]:
-                stored_otp = session.get("pending_otp")
-                if not stored_otp or otp_code != stored_otp:
-                    # Generate and "send" OTP (console simulation)
-                    otp = str(secrets.randbelow(900000) + 100000)
-                    session["pending_otp"] = otp
-                    session["pending_user_id"] = user["id"]
-                    print(f"[MFA OTP for {email}]: {otp}")
-                    flash(f"Kode OTP telah dikirim ke email Anda. (Dev mode: cek console)", "info")
-                    return render_template("auth/login.html", require_otp=True, email=email)
-                session.pop("pending_otp", None)
-                session.pop("pending_user_id", None)
-
-            session.permanent = True
-            session["user_id"] = user["id"]
-            session["role"] = user["role"]
-            session["email"] = user["email"]
-            session["name"] = user["full_name"]
-            log_activity(user["id"], "LOGIN", f"Login sukses dari {request.remote_addr}", request.remote_addr, request.user_agent.string)
-            flash(f"Selamat datang, {user['full_name']}!", "success")
-            return redirect(url_for("admin_dashboard"))
-        else:
-            flash("Email atau password salah.", "danger")
-
-    return render_template("auth/login.html", require_otp=False)
-
-
-@app.route("/auth/logout")
-@login_required
-def auth_logout():
-    log_action("LOGOUT", "User logout")
-    session.clear()
-    flash("Anda telah berhasil logout.", "info")
-    return redirect(url_for("auth_login"))
-
-
-# ─────────────────────────────────────────────
-#  ADMIN ROUTES
-# ─────────────────────────────────────────────
-@app.route("/admin")
-@login_required
-def admin_dashboard():
-    stats = {
-        "total_projects": len(get_all_projects()),
-        "total_skills": len(get_all_skills()),
-        "total_messages": len(get_all_messages()),
-        "unread_messages": get_unread_count(),
-        "total_users": len(get_all_users()),
-        "visitor_stats": get_visitor_stats(),
-    }
-    recent_logs = get_audit_logs(limit=10)
-    recent_messages = get_all_messages(limit=5)
-
-    # Template path fix: the actual file is under templates/admin/admin/dashboard.html
-    return render_template("admin/dashboard.html", stats=stats, recent_logs=recent_logs, recent_messages=recent_messages)
-
-
-
-
-# ── Projects CRUD ──────────────────────────
-@app.route("/admin/projects")
-@login_required
-def admin_projects():
-    projects = get_all_projects()
-    return render_template("admin/projects.html", projects=projects)
-
-
-@app.route("/admin/projects/create", methods=["GET", "POST"])
-@login_required
-@role_required("admin", "manager")
-def admin_create_project():
-    if request.method == "POST":
-        image_url = ""
-        if "image" in request.files:
-            image_url = save_upload(request.files["image"], "projects") or ""
-        data = {
-            "title": request.form.get("title", ""),
-            "description": request.form.get("description", ""),
-            "short_desc": request.form.get("short_desc", ""),
-            "tech_stack": request.form.get("tech_stack", ""),
-            "category": request.form.get("category", ""),
-            "demo_url": request.form.get("demo_url", ""),
-            "github_url": request.form.get("github_url", ""),
-            "image_url": image_url,
-            "is_featured": 1 if request.form.get("is_featured") else 0,
-            "status": request.form.get("status", "active"),
-        }
-        create_project(**data)
-        log_action("CREATE_PROJECT", f"Proyek '{data['title']}' dibuat")
-        flash("Proyek berhasil ditambahkan!", "success")
-        return redirect(url_for("admin_projects"))
-    return render_template("admin/project_form.html", project=None, action="create")
-
-
-@app.route("/admin/projects/<int:pid>/edit", methods=["GET", "POST"])
-@login_required
-@role_required("admin", "manager")
-def admin_edit_project(pid):
-    project = get_project_by_id(pid)
-    if not project:
-        abort(404)
-    if request.method == "POST":
-        image_url = project["image_url"]
-        if "image" in request.files and request.files["image"].filename:
-            image_url = save_upload(request.files["image"], "projects") or image_url
-        data = {
-            "title": request.form.get("title", ""),
-            "description": request.form.get("description", ""),
-            "short_desc": request.form.get("short_desc", ""),
-            "tech_stack": request.form.get("tech_stack", ""),
-            "category": request.form.get("category", ""),
-            "demo_url": request.form.get("demo_url", ""),
-            "github_url": request.form.get("github_url", ""),
-            "image_url": image_url,
-            "is_featured": 1 if request.form.get("is_featured") else 0,
-            "status": request.form.get("status", "active"),
-        }
-        update_project(pid, **data)
-        log_action("EDIT_PROJECT", f"Proyek ID {pid} diedit")
-        flash("Proyek berhasil diperbarui!", "success")
-        return redirect(url_for("admin_projects"))
-    return render_template("admin/project_form.html", project=project, action="edit")
-
-
-@app.route("/admin/projects/<int:pid>/delete", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_delete_project(pid):
-    delete_project(pid)
-    log_action("DELETE_PROJECT", f"Proyek ID {pid} dihapus")
-    flash("Proyek berhasil dihapus.", "success")
-    return redirect(url_for("admin_projects"))
-
-
-# ── Skills CRUD ──────────────────────────────
-@app.route("/admin/skills")
-@login_required
-def admin_skills():
-    skills = get_all_skills()
-    return render_template("admin/skills.html", skills=skills)
-
-
-@app.route("/admin/skills/create", methods=["POST"])
-@login_required
-def admin_create_skill():
-    create_skill(
-        name=request.form.get("name", ""),
-        category=request.form.get("category", ""),
-        level=int(request.form.get("level", 50)),
-        icon=request.form.get("icon", ""),
-    )
-    log_action("CREATE_SKILL", f"Skill '{request.form.get('name')}' ditambahkan")
-    flash("Skill berhasil ditambahkan!", "success")
-    return redirect(url_for("admin_skills"))
-
-
-@app.route("/admin/skills/<int:sid>/delete", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_delete_skill(sid):
-    delete_skill(sid)
-    flash("Skill berhasil dihapus.", "success")
-    return redirect(url_for("admin_skills"))
-
-
-# ── Experience CRUD ──────────────────────────
-@app.route("/admin/experience")
-@login_required
-def admin_experience():
-    exps = get_all_experiences()
-    return render_template("admin/experience.html", experiences=exps)
-
-
-@app.route("/admin/experience/create", methods=["POST"])
-@login_required
-def admin_create_experience():
-    create_experience(
-        company=request.form.get("company", ""),
-        role=request.form.get("role", ""),
-        start_date=request.form.get("start_date", ""),
-        end_date=request.form.get("end_date", ""),
-        description=request.form.get("description", ""),
-        is_current=1 if request.form.get("is_current") else 0,
-        location=request.form.get("location", ""),
-    )
-    flash("Pengalaman berhasil ditambahkan!", "success")
-    return redirect(url_for("admin_experience"))
-
-
-@app.route("/admin/experience/<int:eid>/delete", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_delete_experience(eid):
-    delete_experience(eid)
-    flash("Pengalaman berhasil dihapus.", "success")
-    return redirect(url_for("admin_experience"))
-
-
-# ── Education CRUD ───────────────────────────
-@app.route("/admin/education")
-@login_required
-def admin_education():
-    edus = get_all_educations()
-    return render_template("admin/education.html", educations=edus)
-
-
-@app.route("/admin/education/create", methods=["POST"])
-@login_required
-def admin_create_education():
-    create_education(
-        institution=request.form.get("institution", ""),
-        degree=request.form.get("degree", ""),
-        field=request.form.get("field", ""),
-        start_year=request.form.get("start_year", ""),
-        end_year=request.form.get("end_year", ""),
-        gpa=request.form.get("gpa", ""),
-        description=request.form.get("description", ""),
-    )
-    flash("Pendidikan berhasil ditambahkan!", "success")
-    return redirect(url_for("admin_education"))
-
-
-@app.route("/admin/education/<int:eid>/delete", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_delete_education(eid):
-    delete_education(eid)
-    flash("Pendidikan berhasil dihapus.", "success")
-    return redirect(url_for("admin_education"))
-
-
-# ── Certificates CRUD ────────────────────────
-@app.route("/admin/certificates")
-@login_required
-def admin_certificates():
-    certs = get_all_certificates()
-    return render_template("admin/certificates.html", certificates=certs)
-
-
-@app.route("/admin/certificates/create", methods=["POST"])
-@login_required
-def admin_create_certificate():
-    image_url = ""
-    if "image" in request.files:
-        image_url = save_upload(request.files["image"], "certificates") or ""
-    create_certificate(
-        name=request.form.get("name", ""),
-        issuer=request.form.get("issuer", ""),
-        issue_date=request.form.get("issue_date", ""),
-        credential_id=request.form.get("credential_id", ""),
-        credential_url=request.form.get("credential_url", ""),
-        image_url=image_url,
-    )
-    flash("Sertifikat berhasil ditambahkan!", "success")
-    return redirect(url_for("admin_certificates"))
-
-
-@app.route("/admin/certificates/<int:cid>/delete", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_delete_certificate(cid):
-    delete_certificate(cid)
-    flash("Sertifikat berhasil dihapus.", "success")
-    return redirect(url_for("admin_certificates"))
-
-
-# ── Messages ────────────────────────────────
-@app.route("/admin/messages")
-@login_required
-def admin_messages():
-    messages = get_all_messages()
-    return render_template("admin/messages.html", messages=messages)
-
-
-@app.route("/admin/messages/<int:mid>/read", methods=["POST"])
-@login_required
-def admin_read_message(mid):
-    mark_message_read(mid)
-    return redirect(url_for("admin_messages"))
-
-
-# ── Users (Admin only) ───────────────────────
-@app.route("/admin/users")
-@login_required
-@role_required("admin")
-def admin_users():
-    users = get_all_users()
-    return render_template("admin/users.html", users=users)
-
-
-@app.route("/admin/users/create", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_create_user():
-    password = request.form.get("password", secrets.token_urlsafe(12))
-    create_user(
-        full_name=request.form.get("full_name", ""),
-        email=request.form.get("email", "").lower(),
-        password_hash=generate_password_hash(password),
-        role=request.form.get("role", "staff"),
-        mfa_enabled=1 if request.form.get("mfa_enabled") else 0,
-    )
-    log_action("CREATE_USER", f"User baru '{request.form.get('email')}' dibuat")
-    flash(f"User berhasil dibuat! Password sementara: {password}", "success")
-    return redirect(url_for("admin_users"))
-
-
-@app.route("/admin/users/<int:uid>/delete", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_delete_user(uid):
-    if uid == session["user_id"]:
-        flash("Anda tidak bisa menghapus akun sendiri.", "danger")
-    else:
-        delete_user(uid)
-        log_action("DELETE_USER", f"User ID {uid} dihapus")
-        flash("User berhasil dihapus.", "success")
-    return redirect(url_for("admin_users"))
-
-
-# ── Audit Logs ───────────────────────────────
-@app.route("/admin/audit-logs")
-@login_required
-@role_required("admin", "manager")
-def admin_audit_logs():
-    logs = get_audit_logs(limit=200)
-    return render_template("admin/audit_logs.html", logs=logs)
-
-
-# ── Settings ────────────────────────────────
-@app.route("/admin/settings", methods=["GET", "POST"])
-@login_required
-@role_required("admin")
-def admin_settings():
-    if request.method == "POST":
-        for key in ["site_name", "site_tagline", "owner_name", "owner_title",
-                    "owner_email", "owner_phone", "owner_location",
-                    "github_url", "linkedin_url", "twitter_url", "instagram_url",
-                    "tiktok_url", "upwork_url", "lynk_url",
-                    "meta_description", "primary_color", "accent_color"]:
-            val = request.form.get(key, "")
-            update_setting(key, val)
-
-        if "avatar" in request.files and request.files["avatar"].filename:
-            avatar_path = save_upload(request.files["avatar"], "avatars")
-            if avatar_path:
-                update_setting("owner_avatar", avatar_path)
-
-        log_action("UPDATE_SETTINGS", "Pengaturan situs diperbarui")
-        flash("Pengaturan berhasil disimpan!", "success")
-        return redirect(url_for("admin_settings"))
-    return render_template("admin/settings.html")
-
-
-# ── Analytics API ────────────────────────────
-@app.route("/admin/analytics/data")
-@login_required
-def admin_analytics_data():
-    stats = get_visitor_stats()
-    return jsonify(stats)
-
-
-# ─────────────────────────────────────────────
-#  API ENDPOINTS (JSON)
-# ─────────────────────────────────────────────
-@app.route("/api/projects")
-def api_projects():
-    projects = get_all_projects()
-    return jsonify([dict(p) for p in projects])
-
-
-@app.route("/api/skills")
-def api_skills():
-    skills = get_all_skills()
-    return jsonify([dict(s) for s in skills])
-
-
-@app.route("/api/health")
-def api_health():
-    return jsonify({"status": "ok", "timestamp": datetime.utcnow().isoformat()})
-
-
-# ─────────────────────────────────────────────
-#  Error Handlers
-# ─────────────────────────────────────────────
 @app.errorhandler(403)
-def forbidden(e):
-    return render_template("errors/403.html"), 403
-
-
+def e403(e): return render_template('shared/403.html'), 403
 @app.errorhandler(404)
-def not_found(e):
-    return render_template("errors/404.html"), 404
-
-
+def e404(e): return render_template('shared/404.html'), 404
 @app.errorhandler(500)
-def server_error(e):
-    return render_template("errors/500.html"), 500
+def e500(e): return render_template('shared/500.html'), 500
 
-# NOTE: additional routes
-# NOTE: routes below are appended after bootstrap — Flask still registers them fine
+@app.route('/')
+def index():
+    if current_user.is_authenticated:
+        return redirect(url_for(f'{current_user.role}.dashboard'))
+    return redirect(url_for('auth.login'))
 
-# ─────────────────────────────────────────────
-#  PUBLIC — Services
-# ─────────────────────────────────────────────
-@app.route("/services")
-def services():
-    all_services = get_all_services()
-    return render_template("services.html", services=all_services)
-
-
-# ─────────────────────────────────────────────
-#  PUBLIC — Blog
-# ─────────────────────────────────────────────
-@app.route("/blog")
-def blog():
-    category = request.args.get("category", "")
-    search   = request.args.get("q", "")
-    posts    = get_all_blog_posts(status="published", category=category or None, search=search or None)
-    featured = get_all_blog_posts(status="published", featured_only=True, limit=1)
-    return render_template("blog.html", posts=posts, featured=featured[0] if featured else None,
-                           category=category, search=search)
-
-
-@app.route("/blog/<slug>")
-def blog_post(slug):
-    post = get_blog_post_by_slug(slug)
-    if not post:
-        abort(404)
-    increment_blog_views(slug)
-    recent = get_all_blog_posts(status="published", limit=4)
-    recent = [p for p in recent if p["slug"] != slug][:3]
-    return render_template("blog_post.html", post=post, recent_posts=recent)
-
-
-# ─────────────────────────────────────────────
-#  ADMIN — Testimonials
-# ─────────────────────────────────────────────
-@app.route("/admin/testimonials")
-@login_required
-def admin_testimonials():
-    testimonials = get_all_testimonials()
-    return render_template("admin/testimonials.html", testimonials=testimonials)
-
-
-@app.route("/admin/testimonials/create", methods=["POST"])
-@login_required
-def admin_create_testimonial():
-    avatar_url = ""
-    if "client_avatar" in request.files and request.files["client_avatar"].filename:
-        avatar_url = save_upload(request.files["client_avatar"], "testimonials") or ""
-    create_testimonial(
-        client_name    = request.form.get("client_name", ""),
-        client_title   = request.form.get("client_title", ""),
-        client_company = request.form.get("client_company", ""),
-        client_avatar  = avatar_url,
-        rating         = int(request.form.get("rating", 5)),
-        content        = request.form.get("content", ""),
-        project_name   = request.form.get("project_name", ""),
-        is_featured    = 1 if request.form.get("is_featured") else 0,
-    )
-    log_action("CREATE_TESTIMONIAL", f"Testimonial dari '{request.form.get('client_name')}' ditambahkan")
-    flash("Testimonial berhasil ditambahkan!", "success")
-    return redirect(url_for("admin_testimonials"))
-
-
-@app.route("/admin/testimonials/<int:tid>/delete", methods=["POST"])
-@login_required
-@role_required("admin", "manager")
-def admin_delete_testimonial(tid):
-    delete_testimonial(tid)
-    flash("Testimonial dihapus.", "success")
-    return redirect(url_for("admin_testimonials"))
-
-
-# ─────────────────────────────────────────────
-#  ADMIN — Services
-# ─────────────────────────────────────────────
-@app.route("/admin/services")
-@login_required
-def admin_services():
-    all_services = get_all_services()
-    return render_template("admin/services.html", services=all_services)
-
-
-@app.route("/admin/services/create", methods=["POST"])
-@login_required
-def admin_create_service():
-    create_service(
-        title      = request.form.get("title", ""),
-        subtitle   = request.form.get("subtitle", ""),
-        description= request.form.get("description", ""),
-        icon       = request.form.get("icon", ""),
-        price_from = request.form.get("price_from", ""),
-        price_to   = request.form.get("price_to", ""),
-        price_unit = request.form.get("price_unit", "project"),
-        features   = request.form.get("features", ""),
-        is_popular = 1 if request.form.get("is_popular") else 0,
-    )
-    flash("Service berhasil ditambahkan!", "success")
-    return redirect(url_for("admin_services"))
-
-
-@app.route("/admin/services/<int:sid>/delete", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_delete_service(sid):
-    delete_service(sid)
-    flash("Service dihapus.", "success")
-    return redirect(url_for("admin_services"))
-
-
-# ─────────────────────────────────────────────
-#  ADMIN — Blog
-# ─────────────────────────────────────────────
-@app.route("/admin/blog")
-@login_required
-def admin_blog():
-    posts = get_all_blog_posts()
-    return render_template("admin/blog.html", posts=posts)
-
-
-@app.route("/admin/blog/create", methods=["GET", "POST"])
-@login_required
-def admin_create_blog():
-    if request.method == "POST":
-        cover_url = ""
-        if "cover_image" in request.files and request.files["cover_image"].filename:
-            cover_url = save_upload(request.files["cover_image"], "blog") or ""
-        slug = create_blog_post(
-            title      = request.form.get("title", ""),
-            excerpt    = request.form.get("excerpt", ""),
-            content    = request.form.get("content", ""),
-            cover_image= cover_url,
-            category   = request.form.get("category", "Tech"),
-            tags       = request.form.get("tags", ""),
-            status     = request.form.get("status", "draft"),
-            read_time  = int(request.form.get("read_time", 5)),
-            is_featured= 1 if request.form.get("is_featured") else 0,
-        )
-        log_action("CREATE_BLOG", f"Post '{request.form.get('title')}' dibuat")
-        flash("Artikel berhasil diterbitkan!", "success")
-        return redirect(url_for("admin_blog"))
-    return render_template("admin/blog_form.html", post=None, action="create")
-
-
-@app.route("/admin/blog/<int:pid>/edit", methods=["GET", "POST"])
-@login_required
-def admin_edit_blog(pid):
-    post = get_blog_post_by_id(pid)
-    if not post:
-        abort(404)
-    if request.method == "POST":
-        cover_url = post["cover_image"]
-        if "cover_image" in request.files and request.files["cover_image"].filename:
-            cover_url = save_upload(request.files["cover_image"], "blog") or cover_url
-        update_blog_post(pid,
-            title      = request.form.get("title", ""),
-            excerpt    = request.form.get("excerpt", ""),
-            content    = request.form.get("content", ""),
-            cover_image= cover_url,
-            category   = request.form.get("category", "Tech"),
-            tags       = request.form.get("tags", ""),
-            status     = request.form.get("status", "draft"),
-            read_time  = int(request.form.get("read_time", 5)),
-            is_featured= 1 if request.form.get("is_featured") else 0,
-        )
-        log_action("EDIT_BLOG", f"Post ID {pid} diedit")
-        flash("Artikel diperbarui!", "success")
-        return redirect(url_for("admin_blog"))
-    return render_template("admin/blog_form.html", post=post, action="edit")
-
-
-@app.route("/admin/blog/<int:pid>/delete", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_delete_blog(pid):
-    delete_blog_post(pid)
-    flash("Artikel dihapus.", "success")
-    return redirect(url_for("admin_blog"))
-
-
-# ─────────────────────────────────────────────
-#  API — public blog posts
-# ─────────────────────────────────────────────
-@app.route("/api/blog")
-def api_blog():
-    posts = get_all_blog_posts(status="published", limit=10)
-    return jsonify([dict(p) for p in posts])
-
-# ═══════════════════════════════════════════════════════════════
-#  NEW IMPORTS for Week 4 + Month 2 + Month 3
-# ═══════════════════════════════════════════════════════════════
-import pyotp
-import qrcode
-import io
-import base64
-import json
-import smtplib
-import urllib.request
-import urllib.parse
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from calendar import monthrange
-from db import (
-    check_rate_limit,
-    set_availability, get_availability, delete_availability,
-    save_totp_secret, get_totp_secret, verify_totp_secret, delete_totp_secret,
-    get_github_cache, set_github_cache,
-)
-
-# ─────────────────────────────────────────────
-#  HELPERS
-# ─────────────────────────────────────────────
-def send_email_notification(subject, body_html, settings=None):
-    """Send email via SMTP. Returns True on success."""
-    if not settings:
-        settings = get_settings()
-    host  = settings.get("smtp_host", "")
-    port  = int(settings.get("smtp_port", 587))
-    user  = settings.get("smtp_user", "")
-    pwd   = settings.get("smtp_pass", "")
-    to    = settings.get("notify_email", "")
-    if not all([host, user, pwd, to]):
-        return False
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"]    = f"{settings.get('owner_name','Portfolio')} <{user}>"
-        msg["To"]      = to
-        msg.attach(MIMEText(body_html, "html"))
-        with smtplib.SMTP(host, port, timeout=10) as srv:
-            srv.ehlo(); srv.starttls(); srv.login(user, pwd)
-            srv.sendmail(user, to, msg.as_string())
-        return True
-    except Exception as e:
-        print(f"[EMAIL ERROR] {e}")
-        return False
-
-
-def verify_recaptcha(token, settings=None):
-    """Verify Google reCAPTCHA v3. Returns score (0-1) or -1 on error."""
-    if not settings:
-        settings = get_settings()
-    secret = settings.get("recaptcha_secret_key", "")
-    if not secret or not token:
-        return 1.0   # skip if not configured
-    try:
-        data = urllib.parse.urlencode({"secret": secret, "response": token}).encode()
-        req  = urllib.request.Request("https://www.google.com/recaptcha/api/siteverify",
-                                       data=data)
-        with urllib.request.urlopen(req, timeout=5) as r:
-            result = json.loads(r.read())
-        return result.get("score", 0) if result.get("success") else 0
-    except Exception:
-        return 1.0   # fail open if network error
-
-
-def optimize_image(file_path, max_width=1200, quality=82):
-    """Compress and convert uploaded image to WebP."""
-    try:
-        from PIL import Image as PILImage
-        img = PILImage.open(file_path)
-        # Convert to RGB (handles PNG transparency → white bg)
-        if img.mode in ("RGBA", "P"):
-            bg = PILImage.new("RGB", img.size, (10, 10, 25))
-            if img.mode == "RGBA":
-                bg.paste(img, mask=img.split()[3])
-            else:
-                bg.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[3])
-            img = bg
-        else:
-            img = img.convert("RGB")
-        # Resize if too large
-        if img.width > max_width:
-            ratio = max_width / img.width
-            img = img.resize((max_width, int(img.height * ratio)),
-                              PILImage.LANCZOS)
-        # Save as WebP
-        webp_path = file_path.rsplit(".", 1)[0] + ".webp"
-        img.save(webp_path, "WEBP", quality=quality, method=4)
-        # Remove original if different
-        import os
-        if webp_path != file_path and os.path.exists(file_path):
-            os.remove(file_path)
-        return webp_path
-    except Exception as e:
-        print(f"[IMG OPTIMIZE] {e}")
-        return file_path   # fallback to original
-
-
-# Override save_upload to auto-optimize
-_orig_save_upload = save_upload
-def save_upload_optimized(file, subfolder="general"):
-    path = _orig_save_upload(file, subfolder)
-    if path and path.lower().endswith((".jpg", ".jpeg", ".png")):
-        full_path = os.path.join(app.config["UPLOAD_FOLDER"],
-                                 *path.replace("uploads/", "").split("/"))
-        optimized = optimize_image(full_path)
-        if optimized != full_path:
-            rel = "uploads/" + subfolder + "/" + os.path.basename(optimized)
-            return rel
-    return path
-# Monkey-patch
-save_upload = save_upload_optimized
-
-
-# ─────────────────────────────────────────────
-#  RATE LIMITING decorator
-# ─────────────────────────────────────────────
-def rate_limit(action, max_requests=10, window=3600):
-    """Decorator: blocks if IP exceeds max_requests in window seconds."""
-    def decorator(f):
+# ── Role decorators ───────────────────────────────────────────────
+def role_req(*roles):
+    def dec(f):
         @wraps(f)
-        def decorated(*args, **kwargs):
-            if not check_rate_limit(request.remote_addr, action, max_requests, window):
-                if request.is_json:
-                    return jsonify({"error": "Too many requests. Try again later."}), 429
-                flash("Terlalu banyak permintaan. Coba lagi nanti.", "danger")
-                return redirect(request.referrer or url_for("index"))
-            return f(*args, **kwargs)
-        return decorated
-    return decorator
+        @login_required
+        def w(*a,**k):
+            if current_user.role not in roles:
+                flash('Akses ditolak.','danger')
+                return redirect(url_for('index'))
+            return f(*a,**k)
+        return w
+    return dec
+
+director_only = lambda f: role_req('director')(f)
+lecturer_only = lambda f: role_req('lecturer')(f)
+student_only  = lambda f: role_req('student')(f)
 
 
-# ─────────────────────────────────────────────
-#  OVERRIDE contact route  (rate limit + captcha + email)
-# ─────────────────────────────────────────────
-@app.route("/contact/send", methods=["POST"])
-@rate_limit("contact", max_requests=5, window=3600)
-def contact_send():
-    settings = get_settings()
-    name     = request.form.get("name", "").strip()
-    email    = request.form.get("email", "").strip()
-    subject  = request.form.get("subject", "").strip()
-    message  = request.form.get("message", "").strip()
-    token    = request.form.get("g-recaptcha-response", "")
+# ═══════════════════════════════════════════════════════════════
+#  AUTH
+# ═══════════════════════════════════════════════════════════════
+auth = Blueprint('auth', __name__, url_prefix='/auth')
 
-    if not all([name, email, subject, message]):
-        flash("Semua field wajib diisi.", "danger")
-        return redirect(url_for("contact"))
+@auth.route('/login', methods=['GET','POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for(f'{current_user.role}.dashboard'))
+    if request.method == 'POST':
+        ident = request.form.get('identifier','').strip()
+        pwd   = request.form.get('password','')
+        user  = User.query.filter((User.email==ident)|(User.username==ident)).first()
+        if user and user.check_password(pwd) and user.is_active:
+            login_user(user, remember=request.form.get('remember')=='on')
+            user.last_login = datetime.utcnow()
+            user.last_ip    = request.remote_addr
+            AuditLog.log('login','User',user.id)
+            db.session.commit()
+            return redirect(request.args.get('next') or url_for(f'{user.role}.dashboard'))
+        flash('Email/username atau password salah.','danger')
+    return render_template('auth/login.html')
 
-    # reCAPTCHA check
-    score = verify_recaptcha(token, settings)
-    if score < 0.3:
-        flash("Verifikasi gagal. Silakan coba lagi.", "danger")
-        return redirect(url_for("contact"))
+@auth.route('/logout')
+@login_required
+def logout():
+    AuditLog.log('logout','User',current_user.id)
+    db.session.commit()
+    logout_user()
+    flash('Anda telah keluar.','success')
+    return redirect(url_for('auth.login'))
 
-    create_contact_message(name, email, subject, message, request.remote_addr)
-
-    # Email notification
-    html = f"""
-    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#0d0d1a;color:#e2e8f8;padding:2rem;border-radius:12px;border:1px solid rgba(139,92,246,.3)">
-      <h2 style="color:#a78bfa;margin:0 0 1.5rem">📬 Pesan Baru dari Portfolio</h2>
-      <table style="width:100%;border-collapse:collapse">
-        <tr><td style="padding:.5rem 0;color:#94a3b8;width:100px">Nama</td><td style="color:#e2e8f8;font-weight:600">{name}</td></tr>
-        <tr><td style="padding:.5rem 0;color:#94a3b8">Email</td><td><a href="mailto:{email}" style="color:#00f5ff">{email}</a></td></tr>
-        <tr><td style="padding:.5rem 0;color:#94a3b8">Subject</td><td style="color:#e2e8f8">{subject}</td></tr>
-        <tr><td style="padding:.5rem 0;color:#94a3b8;vertical-align:top">Pesan</td><td style="color:#e2e8f8;line-height:1.7">{message.replace(chr(10), '<br>')}</td></tr>
-      </table>
-      <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.08);font-size:.82rem;color:#475569">
-        IP: {request.remote_addr} · {datetime.now().strftime('%Y-%m-%d %H:%M')}
-      </div>
-    </div>"""
-    send_email_notification(f"[Portfolio] Pesan baru dari {name}", html, settings)
-
-    flash("Pesan Anda berhasil dikirim! Kami akan segera menghubungi Anda.", "success")
-    return redirect(url_for("contact"))
-
-
-# ─────────────────────────────────────────────
-#  GITHUB FEED  (public API, cached 1h)
-# ─────────────────────────────────────────────
-@app.route("/api/github-feed")
-def api_github_feed():
-    settings = get_settings()
-    username = settings.get("github_username", "leohaww")
-    cache_key = f"github_events_{username}"
-    cached = get_github_cache(cache_key)
-
-    # Use cache if fresh (< 60 min)
-    if cached:
-        from datetime import timezone
-        updated = datetime.fromisoformat(cached["updated_at"])
-        age = (datetime.utcnow() - updated).total_seconds()
-        if age < 3600:
-            return jsonify(json.loads(cached["data"]))
-
-    try:
-        url = f"https://api.github.com/users/{username}/events/public?per_page=30"
-        req = urllib.request.Request(url,
-              headers={"User-Agent": "PortfolioApp/1.0",
-                       "Accept": "application/vnd.github.v3+json"})
-        with urllib.request.urlopen(req, timeout=8) as r:
-            events = json.loads(r.read())
-
-        # Filter & simplify
-        simplified = []
-        for ev in events[:20]:
-            repo = ev.get("repo", {}).get("name", "")
-            etype = ev.get("type", "")
-            payload = ev.get("payload", {})
-            created = ev.get("created_at", "")[:10]
-
-            item = {"type": etype, "repo": repo, "date": created}
-
-            if etype == "PushEvent":
-                commits = payload.get("commits", [])
-                item["message"] = commits[0]["message"][:80] if commits else ""
-                item["count"] = len(commits)
-                item["icon"] = "fa-code-commit"
-            elif etype == "CreateEvent":
-                item["message"] = f"Created {payload.get('ref_type','')} {payload.get('ref','')}"
-                item["icon"] = "fa-plus-circle"
-            elif etype == "WatchEvent":
-                item["message"] = "Starred repository"
-                item["icon"] = "fa-star"
-            elif etype == "ForkEvent":
-                item["message"] = f"Forked to {payload.get('forkee',{}).get('full_name','')}"
-                item["icon"] = "fa-code-branch"
-            elif etype == "PullRequestEvent":
-                pr = payload.get("pull_request", {})
-                item["message"] = pr.get("title", "")[:80]
-                item["icon"] = "fa-code-pull-request"
-                item["action"] = payload.get("action", "")
-            elif etype == "IssuesEvent":
-                issue = payload.get("issue", {})
-                item["message"] = issue.get("title", "")[:80]
-                item["icon"] = "fa-circle-dot"
-                item["action"] = payload.get("action", "")
+@auth.route('/profile', methods=['GET','POST'])
+@login_required
+def profile():
+    if request.method == 'POST':
+        ft = request.form.get('form_type','info')
+        if ft == 'info':
+            current_user.full_name = request.form.get('full_name',current_user.full_name).strip()
+            current_user.phone     = request.form.get('phone','').strip()
+            # handle avatar
+            av = request.files.get('avatar')
+            if av and av.filename:
+                import uuid
+                ext = av.filename.rsplit('.',1)[-1].lower()
+                if ext in {'jpg','jpeg','png','gif','webp'}:
+                    fn = f"avatars/{current_user.id}_{uuid.uuid4().hex[:8]}.{ext}"
+                    save_dir = os.path.join(app.static_folder,'img','avatars')
+                    os.makedirs(save_dir, exist_ok=True)
+                    av.save(os.path.join(app.static_folder,'img',fn))
+                    current_user.avatar = fn
+            AuditLog.log('profile_updated','User',current_user.id)
+            db.session.commit()
+            flash('Profil berhasil diperbarui!','success')
+        elif ft == 'password':
+            old = request.form.get('old_password','')
+            new = request.form.get('new_password','')
+            cnf = request.form.get('confirm_password','')
+            if not current_user.check_password(old):
+                flash('Password lama salah.','danger')
+            elif new != cnf:
+                flash('Konfirmasi password tidak cocok.','danger')
+            elif len(new) < 8:
+                flash('Password minimal 8 karakter.','warning')
             else:
-                item["message"] = etype.replace("Event", "")
-                item["icon"] = "fa-github"
+                current_user.set_password(new)
+                AuditLog.log('password_changed','User',current_user.id)
+                db.session.commit()
+                flash('Password berhasil diperbarui!','success')
+        return redirect(url_for('auth.profile'))
 
-            simplified.append(item)
+    # stats per role
+    uid  = current_user.id
+    iid  = current_user.institution_id
+    stats = {}
+    if current_user.role == 'director':
+        stats = dict(
+            total_students =User.query.filter_by(institution_id=iid,role='student',is_active=True).count(),
+            total_lecturers=User.query.filter_by(institution_id=iid,role='lecturer',is_active=True).count(),
+            total_courses  =Course.query.filter_by(institution_id=iid,is_active=True).count())
+    elif current_user.role == 'lecturer':
+        cs = Course.query.filter_by(lecturer_id=uid,is_active=True).all()
+        stu_ids = set()
+        for c in cs:
+            for s in c.students.all(): stu_ids.add(s.id)
+        stats = dict(
+            total_courses=len(cs), total_students=len(stu_ids),
+            total_assignments=Assignment.query.join(Course).filter(Course.lecturer_id==uid).count())
+    else:
+        ts = AttendanceSession.query.join(Course).join(
+            enrollments,Course.id==enrollments.c.course_id
+        ).filter(enrollments.c.user_id==uid,AttendanceSession.is_open==False).count()
+        pr = Attendance.query.filter_by(student_id=uid,status='hadir').count()
+        gs = Grade.query.filter_by(student_id=uid).filter(Grade.gpa_points.isnot(None)).all()
+        tg = sum(g.gpa_points*(g.course.credits or 3) for g in gs)
+        tc = sum(g.course.credits or 3 for g in gs)
+        enrolled_cnt = db.session.query(enrollments).filter_by(user_id=uid).count()
+        stats = dict(
+            att_rate=round(pr/ts*100,1) if ts else 0,
+            gpa=round(tg/tc,2) if tc else 0,
+            courses=enrolled_cnt)
 
-        # Also fetch repos
-        repos_url = f"https://api.github.com/users/{username}/repos?sort=updated&per_page=6"
-        req2 = urllib.request.Request(repos_url,
-               headers={"User-Agent": "PortfolioApp/1.0"})
-        with urllib.request.urlopen(req2, timeout=8) as r2:
-            repos = json.loads(r2.read())
+    recent_logs = AuditLog.query.filter_by(user_id=uid).order_by(AuditLog.created_at.desc()).limit(10).all()
+    return render_template('auth/profile.html', user=current_user, stats=stats, recent_logs=recent_logs)
 
-        repos_simplified = [{
-            "name": rp.get("name", ""),
-            "description": rp.get("description", "") or "",
-            "language": rp.get("language", "") or "",
-            "stars": rp.get("stargazers_count", 0),
-            "forks": rp.get("forks_count", 0),
-            "url": rp.get("html_url", ""),
-            "updated": rp.get("updated_at", "")[:10],
-        } for rp in repos]
-
-        result = {"events": simplified, "repos": repos_simplified, "username": username}
-        set_github_cache(cache_key, result)
-        return jsonify(result)
-
-    except Exception as e:
-        return jsonify({"error": str(e), "events": [], "repos": []}), 200
-
-
-# ─────────────────────────────────────────────
-#  AVAILABILITY CALENDAR
-# ─────────────────────────────────────────────
-@app.route("/api/availability")
-def api_availability():
-    year  = int(request.args.get("year",  datetime.now().year))
-    month = int(request.args.get("month", datetime.now().month))
-    data  = get_availability(year, month)
-    return jsonify(data)
-
-
-@app.route("/admin/availability")
+@auth.route('/notifications')
 @login_required
-def admin_availability():
-    year  = int(request.args.get("year",  datetime.now().year))
-    month = int(request.args.get("month", datetime.now().month))
-    avail = get_availability(year, month)
-    return render_template("admin/availability.html",
-                           avail=avail, year=year, month=month)
+def notifications():
+    ns = Notification.query.filter_by(user_id=current_user.id)\
+         .order_by(Notification.created_at.desc()).limit(50).all()
+    for n in ns:
+        if not n.is_read: n.mark_read()
+    db.session.commit()
+    return render_template('auth/notifications.html', notifications=ns)
+
+app.register_blueprint(auth)
 
 
-@app.route("/admin/availability/set", methods=["POST"])
-@login_required
-def admin_set_availability():
-    date   = request.form.get("date", "")
-    status = request.form.get("status", "available")
-    note   = request.form.get("note", "")
-    if date:
-        set_availability(date, status, note)
-        log_action("SET_AVAILABILITY", f"{date} → {status}")
-    return redirect(request.referrer or url_for("admin_availability"))
+# ═══════════════════════════════════════════════════════════════
+#  DIRECTOR
+# ═══════════════════════════════════════════════════════════════
+director = Blueprint('director', __name__, url_prefix='/director')
 
+@director.route('/dashboard')
+@director_only
+def dashboard():
+    iid   = current_user.institution_id
+    today = date.today()
+    total_students  = User.query.filter_by(institution_id=iid,role='student',is_active=True).count()
+    total_lecturers = User.query.filter_by(institution_id=iid,role='lecturer',is_active=True).count()
+    total_courses   = Course.query.filter_by(institution_id=iid,is_active=True).count()
+    today_sessions  = AttendanceSession.query.join(Course).filter(
+        Course.institution_id==iid, AttendanceSession.session_date==today).count()
+    week_start = today - timedelta(days=today.weekday())
+    sids = [s.id for s in AttendanceSession.query.join(Course).filter(
+        Course.institution_id==iid, AttendanceSession.session_date>=week_start).all()]
+    if sids:
+        tr = Attendance.query.filter(Attendance.session_id.in_(sids)).count()
+        pr = Attendance.query.filter(Attendance.session_id.in_(sids),Attendance.status=='hadir').count()
+        att_rate = round(pr/tr*100,1) if tr else 0
+    else:
+        att_rate = 0
+    at_risk       = _get_at_risk(iid)
+    announcements = Announcement.query.filter_by(institution_id=iid,is_published=True)\
+                    .order_by(Announcement.created_at.desc()).limit(5).all()
+    recent_logs   = AuditLog.query.filter_by(institution_id=iid)\
+                    .order_by(AuditLog.created_at.desc()).limit(10).all()
+    chart_data    = _weekly_chart(iid)
+    # Recent activity across all roles
+    recent_sessions = AttendanceSession.query.join(Course).filter(
+        Course.institution_id==iid).order_by(AttendanceSession.created_at.desc()).limit(5).all()
+    recent_submissions = Submission.query.join(Assignment).join(Course).filter(
+        Course.institution_id==iid).order_by(Submission.submitted_at.desc()).limit(5).all()
+    pending_permits = PermitRequest.query.join(Course).filter(
+        Course.institution_id==iid, PermitRequest.status=='pending').count()
+    return render_template('director/dashboard.html',
+        total_students=total_students, total_lecturers=total_lecturers,
+        total_courses=total_courses, today_sessions=today_sessions,
+        att_rate=att_rate, at_risk=at_risk, announcements=announcements,
+        recent_logs=recent_logs, chart_data=chart_data,
+        recent_sessions=recent_sessions, recent_submissions=recent_submissions,
+        pending_permits=pending_permits)
 
-@app.route("/admin/availability/delete", methods=["POST"])
-@login_required
-def admin_delete_availability():
-    date = request.form.get("date", "")
-    if date:
-        delete_availability(date)
-    return redirect(request.referrer or url_for("admin_availability"))
+@director.route('/users')
+@director_only
+def users():
+    iid  = current_user.institution_id
+    role = request.args.get('role','all')
+    q    = request.args.get('q','')
+    page = request.args.get('page',1,type=int)
+    query= User.query.filter_by(institution_id=iid)
+    if role != 'all': query = query.filter_by(role=role)
+    if q: query = query.filter(
+        (User.full_name.ilike(f'%{q}%'))|(User.email.ilike(f'%{q}%'))|(User.nip_nim.ilike(f'%{q}%')))
+    pagination = query.order_by(User.created_at.desc()).paginate(page=page,per_page=20,error_out=False)
+    return render_template('director/users.html', pagination=pagination, role_filter=role, search=q)
 
+@director.route('/users/add', methods=['GET','POST'])
+@director_only
+def add_user():
+    if request.method == 'POST':
+        email = request.form.get('email','').strip().lower()
+        uname = request.form.get('username','').strip()
+        role  = request.form.get('role','student')
+        if User.query.filter_by(email=email).first():
+            flash('Email sudah terdaftar.','danger')
+            return redirect(url_for('director.add_user'))
+        if User.query.filter_by(username=uname).first():
+            flash('Username sudah digunakan.','danger')
+            return redirect(url_for('director.add_user'))
+        program = request.form.get('program') if role in ('lecturer','student') else None
+        if program not in ('PPL','DM'):
+            program = None
+        u = User(institution_id=current_user.institution_id,
+                 full_name=request.form.get('full_name','').strip(),
+                 email=email, username=uname,
+                 role=role, program=program,
+                 nip_nim=request.form.get('nip_nim','').strip(),
+                 phone=request.form.get('phone','').strip(),
+                 is_active=True, is_verified=True)
+        u.set_password(request.form.get('password','password123'))
+        db.session.add(u)
+        db.session.flush()
+        # Notify the new user
+        prog_txt = f' — Kelas {u.program}' if u.program else ''
+        notify(u.id, '🎉 Selamat Datang di OmniClass!',
+               f'Akun Anda ({u.role}{prog_txt}) telah dibuat oleh {current_user.full_name}.',
+               'success', 'system')
+        AuditLog.log('user_created','User',u.id,message=email)
+        db.session.commit()
+        flash(f'Pengguna {u.full_name} berhasil ditambahkan.','success')
+        return redirect(url_for('director.users'))
+    return render_template('director/add_user.html')
 
-# ─────────────────────────────────────────────
-#  2FA TOTP SETUP
-# ─────────────────────────────────────────────
-@app.route("/admin/2fa/setup")
-@login_required
-def admin_2fa_setup():
-    uid    = session["user_id"]
-    user   = get_user_by_id(uid)
-    secret = pyotp.random_base32()
-    save_totp_secret(uid, secret)
-    totp   = pyotp.TOTP(secret)
-    uri    = totp.provisioning_uri(
-        name=user["email"],
-        issuer_name=get_settings().get("site_name", "Portfolio")
-    )
-    # Generate QR code as base64 PNG
-    qr_img = qrcode.make(uri)
-    buf    = io.BytesIO()
-    qr_img.save(buf, format="PNG")
-    qr_b64 = base64.b64encode(buf.getvalue()).decode()
-    return render_template("admin/2fa_setup.html",
-                           secret=secret, qr_b64=qr_b64, uri=uri)
+@director.route('/users/<int:uid>/toggle', methods=['POST'])
+@director_only
+def toggle_user(uid):
+    u = User.query.filter_by(id=uid,institution_id=current_user.institution_id).first_or_404()
+    u.is_active = not u.is_active
+    AuditLog.log('user_toggle','User',uid)
+    db.session.commit()
+    flash(f"Pengguna {u.full_name} {'diaktifkan' if u.is_active else 'dinonaktifkan'}.",'success')
+    return redirect(url_for('director.users'))
 
-
-@app.route("/admin/2fa/verify", methods=["POST"])
-@login_required
-def admin_2fa_verify():
-    uid    = session["user_id"]
-    code   = request.form.get("code", "").strip().replace(" ", "")
-    record = get_totp_secret(uid)
-    if not record:
-        flash("Setup 2FA terlebih dahulu.", "danger")
-        return redirect(url_for("admin_2fa_setup"))
-    totp = pyotp.TOTP(record["secret"])
-    if totp.verify(code, valid_window=1):
-        verify_totp_secret(uid)
-        # Enable MFA on user
-        update_user(uid, mfa_enabled=1)
-        log_action("2FA_ENABLED", "TOTP 2FA diaktifkan")
-        flash("2FA berhasil diaktifkan! Akun Anda sekarang lebih aman.", "success")
-        return redirect(url_for("admin_settings"))
-    flash("Kode OTP tidak valid. Coba lagi.", "danger")
-    return redirect(url_for("admin_2fa_setup"))
-
-
-@app.route("/admin/2fa/disable", methods=["POST"])
-@login_required
-def admin_2fa_disable():
-    uid = session["user_id"]
-    delete_totp_secret(uid)
-    update_user(uid, mfa_enabled=0)
-    log_action("2FA_DISABLED", "TOTP 2FA dinonaktifkan")
-    flash("2FA berhasil dinonaktifkan.", "info")
-    return redirect(url_for("admin_settings"))
-
-
-# ─────────────────────────────────────────────
-#  PWA FILES
-# ─────────────────────────────────────────────
-@app.route("/manifest.json")
-def pwa_manifest():
-    settings = get_settings()
-    manifest = {
-        "name": settings.get("owner_name", "Portfolio"),
-        "short_name": settings.get("owner_name", "Portfolio").split()[0],
-        "description": settings.get("meta_description", ""),
-        "start_url": "/",
-        "display": "standalone",
-        "background_color": settings.get("primary_color", "#04040f"),
-        "theme_color": settings.get("pwa_theme_color", "#04040f"),
-        "orientation": "portrait-primary",
-        "lang": settings.get("default_lang", "id"),
-        "icons": [
-            {"src": "/static/img/pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-            {"src": "/static/img/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
-        ],
-        "screenshots": [],
-        "categories": ["portfolio", "technology"],
-    }
-    return jsonify(manifest), 200, {"Content-Type": "application/manifest+json"}
-
-
-@app.route("/sw.js")
-def service_worker():
-    sw_code = """
-const CACHE = 'portfolio-v2';
-const STATIC = [
-  '/','/static/css/main.css','/static/js/main.js',
-  '/offline'
-];
-
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)));
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-  ));
-  self.clients.claim();
-});
-
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  if (e.request.url.includes('/api/')) {
-    // Network first for API
-    e.respondWith(
-      fetch(e.request).catch(() => new Response('[]', {headers:{'Content-Type':'application/json'}}))
-    );
-    return;
-  }
-  e.respondWith(
-    caches.match(e.request).then(cached => {
-      const net = fetch(e.request).then(res => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
+@director.route('/users/<int:uid>/detail')
+@director_only
+def user_detail(uid):
+    u = User.query.filter_by(id=uid,institution_id=current_user.institution_id).first_or_404()
+    stats = {}
+    if u.role == 'lecturer':
+        courses = Course.query.filter_by(lecturer_id=u.id).all()
+        stats = {
+            'total_courses': len(courses),
+            'total_students': sum(c.student_count for c in courses),
+            'courses': [{'name': c.name, 'code': c.code, 'program': c.program,
+                         'students': c.student_count} for c in courses],
         }
-        return res;
-      });
-      return cached || net.catch(() =>
-        caches.match('/offline').then(r => r || new Response('Offline'))
-      );
-    })
-  );
-});
-"""
-    return sw_code, 200, {"Content-Type": "application/javascript",
-                           "Service-Worker-Allowed": "/"}
-
-
-@app.route("/offline")
-def offline_page():
-    return render_template("offline.html")
-
-
-# ─────────────────────────────────────────────
-#  MULTI-LANGUAGE  (i18n via JSON files)
-# ─────────────────────────────────────────────
-_translations = {}
-
-def load_translations():
-    import os, json
-    global _translations
-    lang_dir = os.path.join(os.path.dirname(__file__), "translations")
-    os.makedirs(lang_dir, exist_ok=True)
-    for lang in ["id", "en"]:
-        path = os.path.join(lang_dir, f"{lang}.json")
-        if os.path.exists(path):
-            with open(path) as f:
-                _translations[lang] = json.load(f)
-        else:
-            _translations[lang] = {}
-
-
-def get_translation(key, lang=None):
-    if not lang:
-        lang = session.get("lang", get_settings().get("default_lang", "id"))
-    return _translations.get(lang, {}).get(key, key)
-
-
-@app.context_processor
-def inject_i18n():
-    lang = session.get("lang", "id")
-    return dict(t=get_translation, current_lang=lang)
-
-
-@app.route("/lang/<code>")
-def set_language(code):
-    if code in ["id", "en"]:
-        session["lang"] = code
-    return redirect(request.referrer or url_for("index"))
-
-
-# ─────────────────────────────────────────────
-#  ADMIN — Settings (extended with new fields)
-# ─────────────────────────────────────────────
-@app.route("/admin/settings/email-test", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_test_email():
-    settings = get_settings()
-    ok = send_email_notification(
-        "[Portfolio] Test Email",
-        "<h2>✅ Email berhasil!</h2><p>Konfigurasi SMTP Anda bekerja dengan baik.</p>",
-        settings
-    )
-    flash("Email test terkirim!" if ok else "Gagal kirim email. Periksa konfigurasi SMTP.", "success" if ok else "danger")
-    return redirect(url_for("admin_settings"))
-
-
-# ─────────────────────────────────────────────
-#  ADMIN — Update settings (extended)
-# ─────────────────────────────────────────────
-@app.route("/admin/settings/update", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_settings_update():
-    all_keys = [
-        "site_name", "site_tagline", "owner_name", "owner_title",
-        "owner_email", "owner_phone", "owner_location",
-        "github_url", "linkedin_url", "twitter_url", "instagram_url",
-        "tiktok_url", "upwork_url", "lynk_url",
-        "meta_description", "primary_color", "accent_color",
-        "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "notify_email",
-        "github_username",
-        "availability_status", "availability_msg",
-        "default_lang",
-        "recaptcha_site_key", "recaptcha_secret_key",
-        "pwa_enabled", "pwa_theme_color",
-    ]
-    for key in all_keys:
-        val = request.form.get(key, "")
-        update_setting(key, val)
-
-    if "avatar" in request.files and request.files["avatar"].filename:
-        avatar_path = save_upload(request.files["avatar"], "avatars")
-        if avatar_path:
-            update_setting("owner_avatar", avatar_path)
-
-    log_action("UPDATE_SETTINGS", "Pengaturan situs diperbarui")
-    flash("Pengaturan berhasil disimpan!", "success")
-    return redirect(url_for("admin_settings"))
-
-
-# ─────────────────────────────────────────────────────────────
-#  TAMBAHKAN ROUTE INI KE app.py
-#  Letakkan sebelum:  if __name__ == "__main__":
-# ─────────────────────────────────────────────────────────────
-
-@app.route("/api/upload-media", methods=["POST"])
-@login_required
-def api_upload_media():
-    """
-    Single-file upload endpoint yang dipanggil oleh
-    blog_form.html untuk setiap file dalam folder.
-    Returns: { "url": "uploads/blog/filename.webp", "name": "...", "size": ... }
-    """
-    if "file" not in request.files:
-        return jsonify({"error": "No file"}), 400
-
-    file      = request.files["file"]
-    subfolder = request.form.get("subfolder", "blog")
-
-    if not file or not file.filename:
-        return jsonify({"error": "Empty file"}), 400
-
-    # Save + auto-optimize (WebP conversion via save_upload_optimized)
-    saved_path = save_upload(file, subfolder)
-
-    if not saved_path:
-        return jsonify({"error": "Upload failed"}), 500
-
+    elif u.role == 'student':
+        courses = db.session.query(Course).join(
+            enrollments, Course.id==enrollments.c.course_id).filter(enrollments.c.user_id==u.id).all()
+        grades = Grade.query.filter_by(student_id=u.id).filter(Grade.gpa_points.isnot(None)).all()
+        gpa = round(sum(g.gpa_points for g in grades)/len(grades),2) if grades else None
+        submissions = Submission.query.filter_by(student_id=u.id).count()
+        stats = {
+            'total_courses': len(courses),
+            'gpa': gpa,
+            'total_submissions': submissions,
+            'courses': [{'name': c.name, 'code': c.code, 'program': c.program} for c in courses],
+        }
+    inst = Institution.query.get(u.institution_id)
     return jsonify({
-        "url":  url_for("static", filename=saved_path, _external=False),
-        "name": file.filename,
-        "path": saved_path,
-        "size": request.content_length or 0,
+        'success': True,
+        'id': u.id, 'full_name': u.full_name, 'email': u.email, 'username': u.username,
+        'role': u.role, 'program': u.program, 'nip_nim': u.nip_nim, 'phone': u.phone,
+        'avatar': u.avatar_url, 'is_active': u.is_active,
+        'institution': inst.name if inst else '—',
+        'created_at': u.created_at.strftime('%d %B %Y') if u.created_at else '—',
+        'last_login': u.last_login.strftime('%d %B %Y, %H:%M') if u.last_login else 'Belum pernah login',
+        'stats': stats,
     })
-# ─────────────────────────────────────────────
-#  Bootstrap
-# ─────────────────────────────────────────────
-if __name__ == "__main__":
-    load_translations()
-    # Pakai port khusus Flask supaya tidak tabrakan dengan web app lain
-    # (hindari ikut-ikutan env PORT global yang mungkin milik app lain)
-    port = int(os.environ.get("FLASK_PORT", 5005))
-    app.run(debug=True, host="0.0.0.0", port=port)
+
+@director.route('/users/<int:uid>/edit', methods=['POST'])
+@director_only
+def edit_user(uid):
+    u = User.query.filter_by(id=uid,institution_id=current_user.institution_id).first_or_404()
+    email = request.form.get('email','').strip().lower()
+    uname = request.form.get('username','').strip()
+    if email != u.email and User.query.filter_by(email=email).first():
+        flash('Email sudah digunakan pengguna lain.','danger')
+        return redirect(url_for('director.users'))
+    if uname != u.username and User.query.filter_by(username=uname).first():
+        flash('Username sudah digunakan pengguna lain.','danger')
+        return redirect(url_for('director.users'))
+    u.full_name = request.form.get('full_name', u.full_name).strip()
+    u.email     = email or u.email
+    u.username  = uname or u.username
+    u.phone     = request.form.get('phone', u.phone or '').strip()
+    u.nip_nim   = request.form.get('nip_nim', u.nip_nim or '').strip()
+    new_role = request.form.get('role', u.role)
+    if new_role in ('director','lecturer','student'):
+        u.role = new_role
+    prog = request.form.get('program')
+    u.program = prog if prog in ('PPL','DM') else (None if u.role == 'director' else u.program)
+    new_password = request.form.get('new_password','').strip()
+    pw_changed = False
+    if new_password:
+        u.set_password(new_password)
+        pw_changed = True
+    AuditLog.log('user_edited','User',uid,message='password_changed' if pw_changed else 'profile_updated')
+    db.session.commit()
+    if pw_changed:
+        notify(u.id, '🔒 Password Diperbarui',
+               f'Password akun Anda telah diperbarui oleh {current_user.full_name}.',
+               'warning','system')
+        db.session.commit()
+    flash(f'Data {u.full_name} berhasil diperbarui.' + (' Password baru telah diset.' if pw_changed else ''),'success')
+    return redirect(url_for('director.users'))
+
+@director.route('/users/<int:uid>/delete', methods=['POST'])
+@director_only
+def delete_user(uid):
+    u = User.query.filter_by(id=uid,institution_id=current_user.institution_id).first_or_404()
+    if u.id == current_user.id:
+        flash('Anda tidak bisa menghapus akun Anda sendiri.','danger')
+        return redirect(url_for('director.users'))
+
+    # Hard blockers — data that can't be safely orphaned without explicit reassignment
+    blockers = []
+    if Course.query.filter_by(lecturer_id=u.id).count() > 0:
+        blockers.append('masih mengampu kelas')
+    if Assignment.query.filter_by(lecturer_id=u.id).count() > 0:
+        blockers.append('masih memiliki tugas yang ia buat')
+    if AttendanceSession.query.filter_by(lecturer_id=u.id).count() > 0:
+        blockers.append('masih memiliki sesi absensi yang ia buat')
+    if Announcement.query.filter_by(author_id=u.id).count() > 0:
+        blockers.append('masih memiliki pengumuman yang ia buat')
+    if blockers:
+        flash(f'{u.full_name} tidak dapat dihapus karena {", dan ".join(blockers)}. '
+              f'Alihkan/hapus data tersebut terlebih dahulu.', 'danger')
+        return redirect(url_for('director.users'))
+
+    name = u.full_name
+    try:
+        # Soft references (nullable FKs) — clear so the row can be safely removed
+        Attendance.query.filter_by(verified_by=u.id).update({'verified_by': None})
+        PermitRequest.query.filter_by(reviewed_by=u.id).update({'reviewed_by': None})
+        Submission.query.filter_by(graded_by=u.id).update({'graded_by': None})
+        Grade.query.filter_by(updated_by=u.id).update({'updated_by': None})
+        AuditLog.query.filter_by(user_id=u.id).update({'user_id': None})
+
+        if u.role == 'student':
+            db.session.execute(enrollments.delete().where(enrollments.c.user_id==u.id))
+            Attendance.query.filter_by(student_id=u.id).delete()
+            Submission.query.filter_by(student_id=u.id).delete()
+            Grade.query.filter_by(student_id=u.id).delete()
+            PermitRequest.query.filter_by(student_id=u.id).delete()
+
+        Notification.query.filter_by(user_id=u.id).delete()
+        AuditLog.log('user_deleted','User',uid,message=name)
+        db.session.delete(u)
+        db.session.commit()
+        flash(f'Pengguna {name} berhasil dihapus.','success')
+    except Exception as ex:
+        db.session.rollback()
+        flash(f'Gagal menghapus pengguna: {ex}','danger')
+    return redirect(url_for('director.users'))
+
+# ── Director: Manage Courses (assign lecturer + enroll students) ──
+@director.route('/courses')
+@director_only
+def courses():
+    iid  = current_user.institution_id
+    q    = request.args.get('q','')
+    program_filter = request.args.get('program','all')
+    page = request.args.get('page',1,type=int)
+    query= Course.query.filter_by(institution_id=iid)
+    if q: query = query.filter(
+        (Course.name.ilike(f'%{q}%'))|(Course.code.ilike(f'%{q}%')))
+    if program_filter in ('PPL','DM'):
+        query = query.filter(Course.program==program_filter)
+    pagination = query.order_by(Course.created_at.desc()).paginate(page=page,per_page=20,error_out=False)
+    lecturers  = User.query.filter_by(institution_id=iid,role='lecturer',is_active=True).all()
+    students   = User.query.filter_by(institution_id=iid,role='student',is_active=True).all()
+    count_ppl  = Course.query.filter_by(institution_id=iid,program='PPL').count()
+    count_dm   = Course.query.filter_by(institution_id=iid,program='DM').count()
+    return render_template('director/courses.html',
+        pagination=pagination, search=q, lecturers=lecturers, students=students,
+        program_filter=program_filter, count_ppl=count_ppl, count_dm=count_dm)
+
+@director.route('/courses/create', methods=['POST'])
+@director_only
+def create_course():
+    iid = current_user.institution_id
+    code = request.form.get('code','').strip().upper()
+    if Course.query.filter_by(institution_id=iid, code=code).first():
+        flash(f'Kode "{code}" sudah ada.','danger')
+        return redirect(url_for('director.courses'))
+    program = request.form.get('program','PPL')
+    if program not in ('PPL','DM'): program = 'PPL'
+    c = Course(
+        institution_id=iid,
+        lecturer_id=request.form.get('lecturer_id',type=int),
+        program=program,
+        code=code, name=request.form.get('name','').strip(),
+        description=request.form.get('description','').strip(),
+        credits=int(request.form.get('credits',3)),
+        semester=request.form.get('semester',''),
+        academic_year=request.form.get('academic_year',''),
+        room=request.form.get('room',''),
+        capacity=int(request.form.get('capacity',40)),
+        is_active=True)
+    db.session.add(c); db.session.flush()
+    # Enroll selected students
+    student_ids = request.form.getlist('student_ids[]')
+    for sid in student_ids:
+        db.session.execute(enrollments.insert().values(
+            user_id=int(sid), course_id=c.id, status='active'))
+    # Notify lecturer
+    if c.lecturer_id:
+        notify(c.lecturer_id, f'📚 Kelas Baru Ditetapkan',
+               f'Anda ditetapkan sebagai dosen "{c.name}" ({c.code}).',
+               'info','course', url_for('lecturer.course_detail',cid=c.id))
+    # Notify enrolled students
+    for sid in student_ids:
+        notify(int(sid), f'📖 Terdaftar di {c.name}',
+               f'Anda telah didaftarkan ke mata kuliah {c.name} ({c.code}).',
+               'info','course')
+    AuditLog.log('course_created','Course',c.id,message=c.name)
+    db.session.commit()
+    flash(f'Mata kuliah "{c.name}" berhasil dibuat.','success')
+    return redirect(url_for('director.courses'))
+
+@director.route('/courses/<int:cid>/enroll', methods=['POST'])
+@director_only
+def enroll_students(cid):
+    c = Course.query.filter_by(id=cid,institution_id=current_user.institution_id).first_or_404()
+    sids = request.form.getlist('student_ids[]')
+    added = 0
+    for sid in sids:
+        sid = int(sid)
+        existing = db.session.query(enrollments).filter_by(
+            user_id=sid, course_id=cid).first()
+        if not existing:
+            db.session.execute(enrollments.insert().values(
+                user_id=sid, course_id=cid, status='active'))
+            notify(sid, f'📖 Terdaftar di {c.name}',
+                   f'Anda telah didaftarkan ke {c.name} ({c.code}).',
+                   'info','course')
+            added += 1
+    if added:
+        # Notify lecturer about new students
+        notify(c.lecturer_id, f'👥 {added} Mahasiswa Baru',
+               f'{added} mahasiswa baru ditambahkan ke kelas {c.name}.',
+               'info','course')
+    AuditLog.log('students_enrolled','Course',cid,message=f'{added} added')
+    db.session.commit()
+    flash(f'{added} mahasiswa berhasil didaftarkan ke {c.name}.','success')
+    return redirect(url_for('director.courses'))
+
+@director.route('/courses/<int:cid>/unenroll', methods=['POST'])
+@director_only
+def unenroll_student(cid):
+    c   = Course.query.filter_by(id=cid,institution_id=current_user.institution_id).first_or_404()
+    sid = request.form.get('student_id',type=int)
+    db.session.execute(
+        enrollments.delete().where(
+            enrollments.c.user_id==sid,
+            enrollments.c.course_id==cid))
+    notify(sid, f'ℹ️ Dikeluarkan dari {c.name}',
+           f'Anda telah dikeluarkan dari mata kuliah {c.name}.',
+           'warning','course')
+    db.session.commit()
+    flash('Mahasiswa berhasil dikeluarkan.','success')
+    return redirect(url_for('director.courses'))
+
+@director.route('/courses/<int:cid>/assign-lecturer', methods=['POST'])
+@director_only
+def assign_lecturer(cid):
+    c = Course.query.filter_by(id=cid,institution_id=current_user.institution_id).first_or_404()
+    new_lid = request.form.get('lecturer_id',type=int)
+    old_lid = c.lecturer_id
+    c.lecturer_id = new_lid
+    if old_lid and old_lid != new_lid:
+        notify(old_lid, f'ℹ️ Kelas Dipindahkan',
+               f'Anda tidak lagi mengajar {c.name}.','warning','course')
+    if new_lid:
+        notify(new_lid, f'📚 Kelas Ditetapkan',
+               f'Anda ditetapkan mengajar {c.name} ({c.code}).',
+               'info','course', url_for('lecturer.course_detail',cid=cid))
+    AuditLog.log('lecturer_assigned','Course',cid)
+    db.session.commit()
+    flash('Dosen berhasil ditetapkan.','success')
+    return redirect(url_for('director.courses'))
 
 
+@director.route('/courses/<int:cid>/edit', methods=['POST'])
+@director_only
+def edit_course(cid):
+    c = Course.query.filter_by(id=cid,institution_id=current_user.institution_id).first_or_404()
+
+    c.code           = request.form.get('code',c.code).strip().upper()
+    c.name           = request.form.get('name',c.name).strip()
+    c.description    = request.form.get('description',c.description or '').strip()
+    prog = request.form.get('program')
+    if prog in ('PPL','DM'):
+        c.program = prog
+    c.credits        = int(request.form.get('credits',c.credits or 3))
+    c.semester       = request.form.get('semester',c.semester or '').strip()
+    c.academic_year  = request.form.get('academic_year',c.academic_year or '').strip()
+    c.room           = request.form.get('room',c.room or '').strip()
+    c.capacity       = int(request.form.get('capacity',c.capacity or 40))
+
+    new_lid = request.form.get('lecturer_id', type=int)
+    if new_lid:
+        old_lid = c.lecturer_id
+        c.lecturer_id = new_lid
+        if old_lid and old_lid != new_lid:
+            notify(old_lid, f'ℹ️ Kelas Informasi Diubah',
+                   f'Data kelas "{c.name}" telah diperbarui oleh director.',
+                   'warning','course')
+            notify(new_lid, f'📚 Data Kelas Diperbarui',
+                   f'Anda mengajar "{c.name}" ({c.code}).',
+                   'info','course')
+
+    AuditLog.log('course_edited','Course',cid,message=c.name)
+    db.session.commit()
+    flash(f'Kelas "{c.name}" berhasil diperbarui.','success')
+    return redirect(url_for('director.courses'))
+
+
+@director.route('/courses/<int:cid>/toggle', methods=['POST'])
+@director_only
+def toggle_course_director(cid):
+    c = Course.query.filter_by(id=cid,institution_id=current_user.institution_id).first_or_404()
+    c.is_active = not c.is_active
+    AuditLog.log('course_toggled','Course',cid,message=c.name)
+    db.session.commit()
+    flash(f'Kelas "{c.name}" sekarang {"Aktif" if c.is_active else "Nonaktif"}.','success')
+    return redirect(url_for('director.courses'))
+
+
+@director.route('/courses/<int:cid>/delete', methods=['POST'])
+@director_only
+def delete_course_director(cid):
+    c = Course.query.filter_by(id=cid,institution_id=current_user.institution_id).first_or_404()
+    if c.student_count > 0:
+        flash(f'Tidak dapat hapus — masih ada {c.student_count} mahasiswa terdaftar.','danger')
+        return redirect(url_for('director.courses'))
+
+    name = c.name
+    db.session.delete(c)
+    AuditLog.log('course_deleted','Course',cid,message=name)
+    db.session.commit()
+    flash(f'Kelas "{name}" telah dihapus.','success')
+    return redirect(url_for('director.courses'))
+
+
+@director.route('/analytics')
+@director_only
+def analytics():
+    from sqlalchemy import func
+    iid = current_user.institution_id
+    grade_dist  = db.session.query(Grade.letter_grade,func.count(Grade.id))\
+                  .join(Course).filter(Course.institution_id==iid)\
+                  .group_by(Grade.letter_grade).all()
+    course_att  = _course_att_stats(iid)
+    at_risk     = _get_at_risk(iid, detailed=True)
+    monthly     = _monthly_trend(iid)
+    return render_template('director/analytics.html',
+        grade_dist=grade_dist, course_att=course_att,
+        at_risk=at_risk, monthly=monthly)
+
+@director.route('/reports')
+@director_only
+def reports():
+    cs = Course.query.filter_by(institution_id=current_user.institution_id,is_active=True).all()
+    return render_template('director/reports.html', courses=cs)
+
+
+def _report_filters():
+    iid   = current_user.institution_id
+    cid   = request.values.get('course_id', type=int)
+    prog  = request.values.get('program', '')
+    dfrom = request.values.get('date_from', '')
+    dto   = request.values.get('date_to', '')
+    return iid, cid, prog if prog in ('PPL','DM') else None, dfrom, dto
+
+
+def _report_attendance(iid, cid, prog, dfrom, dto):
+    q = db.session.query(Attendance, AttendanceSession, Course, User).join(
+        AttendanceSession, Attendance.session_id==AttendanceSession.id
+    ).join(Course, Attendance.course_id==Course.id
+    ).join(User, Attendance.student_id==User.id
+    ).filter(Course.institution_id==iid)
+    if cid: q = q.filter(Course.id==cid)
+    if prog: q = q.filter(Course.program==prog)
+    if dfrom: q = q.filter(AttendanceSession.session_date >= datetime.strptime(dfrom,'%Y-%m-%d').date())
+    if dto:   q = q.filter(AttendanceSession.session_date <= datetime.strptime(dto,'%Y-%m-%d').date())
+    rows = q.order_by(AttendanceSession.session_date.desc()).all()
+    out = []
+    for att, sess, course, stu in rows:
+        out.append({
+            'Tanggal': sess.session_date.strftime('%d-%m-%Y'),
+            'Pertemuan': f"#{sess.meeting_number}",
+            'Program': course.program,
+            'Kode Kelas': course.code,
+            'Mata Kuliah': course.name,
+            'Dosen': course.lecturer.full_name if course.lecturer else '—',
+            'Mahasiswa': stu.full_name,
+            'NIM': stu.nip_nim or stu.username,
+            'Status': att.status.title(),
+            'Jam Check-in': att.check_in_time.strftime('%H:%M') if att.check_in_time else '—',
+            'Metode': att.method_used or '—',
+        })
+    return out
+
+
+def _report_grades(iid, cid, prog, dfrom, dto):
+    q = db.session.query(Grade, Course, User).join(
+        Course, Grade.course_id==Course.id
+    ).join(User, Grade.student_id==User.id
+    ).filter(Course.institution_id==iid)
+    if cid: q = q.filter(Course.id==cid)
+    if prog: q = q.filter(Course.program==prog)
+    if dfrom: q = q.filter(Grade.updated_at >= datetime.strptime(dfrom,'%Y-%m-%d'))
+    if dto:   q = q.filter(Grade.updated_at <= datetime.strptime(dto,'%Y-%m-%d')+timedelta(days=1))
+    rows = q.order_by(Course.code, User.full_name).all()
+    out = []
+    for g, course, stu in rows:
+        out.append({
+            'Program': course.program,
+            'Kode Kelas': course.code,
+            'Mata Kuliah': course.name,
+            'Dosen': course.lecturer.full_name if course.lecturer else '—',
+            'Mahasiswa': stu.full_name,
+            'NIM': stu.nip_nim or stu.username,
+            'Tugas': g.assignment_score,
+            'Kuis': g.quiz_score,
+            'UTS': g.midterm_score,
+            'UAS': g.final_score,
+            'Kehadiran': g.attendance_score,
+            'Total': g.total_score,
+            'Huruf': g.letter_grade or '—',
+            'Bobot GPA': g.gpa_points,
+        })
+    return out
+
+
+def _report_at_risk(iid, prog):
+    students_q = User.query.filter_by(institution_id=iid,role='student',is_active=True)
+    out = []
+    for s in students_q.all():
+        courses_q = db.session.query(Course).join(
+            enrollments, Course.id==enrollments.c.course_id
+        ).filter(enrollments.c.user_id==s.id, Course.institution_id==iid)
+        if prog: courses_q = courses_q.filter(Course.program==prog)
+        courses = courses_q.all()
+        if not courses: continue
+        for c in courses:
+            recs = Attendance.query.filter_by(student_id=s.id, course_id=c.id).all()
+            rate = round(sum(1 for r in recs if r.status=='hadir')/len(recs)*100,1) if recs else 100
+            g = Grade.query.filter_by(student_id=s.id, course_id=c.id).first()
+            reasons = []
+            if rate < 75: reasons.append(f'Kehadiran {rate}%')
+            if g and g.gpa_points is not None and g.gpa_points < 2.0:
+                reasons.append(f'Nilai rendah ({g.letter_grade})')
+            if reasons:
+                out.append({
+                    'Program': c.program,
+                    'Kode Kelas': c.code,
+                    'Mata Kuliah': c.name,
+                    'Dosen': c.lecturer.full_name if c.lecturer else '—',
+                    'Mahasiswa': s.full_name,
+                    'NIM': s.nip_nim or s.username,
+                    'Tingkat Kehadiran (%)': rate,
+                    'Nilai Huruf': g.letter_grade if g else '—',
+                    'Alasan Risiko': ', '.join(reasons),
+                })
+    return sorted(out, key=lambda r: r['Tingkat Kehadiran (%)'])
+
+
+def _report_summary(iid, prog):
+    q = Course.query.filter_by(institution_id=iid, is_active=True)
+    if prog: q = q.filter(Course.program==prog)
+    out = []
+    for c in q.all():
+        students = c.students.all()
+        total_sessions = c.sessions.count()
+        total_att = Attendance.query.filter_by(course_id=c.id).count()
+        present   = Attendance.query.filter_by(course_id=c.id, status='hadir').count()
+        att_rate  = round(present/total_att*100,1) if total_att else 0
+        grades    = Grade.query.filter_by(course_id=c.id).filter(Grade.total_score.isnot(None)).all()
+        avg_score = round(sum(g.total_score for g in grades)/len(grades),1) if grades else 0
+        out.append({
+            'Program': c.program,
+            'Kode Kelas': c.code,
+            'Mata Kuliah': c.name,
+            'Dosen': c.lecturer.full_name if c.lecturer else '—',
+            'Jumlah Mahasiswa': len(students),
+            'Total Sesi': total_sessions,
+            'Total Tugas': c.assignments.count(),
+            'Rata-rata Kehadiran (%)': att_rate,
+            'Rata-rata Nilai': avg_score,
+        })
+    return out
+
+
+_REPORT_BUILDERS = {
+    'attendance': lambda iid,cid,prog,dfrom,dto: _report_attendance(iid,cid,prog,dfrom,dto),
+    'grades':     lambda iid,cid,prog,dfrom,dto: _report_grades(iid,cid,prog,dfrom,dto),
+    'at_risk':    lambda iid,cid,prog,dfrom,dto: _report_at_risk(iid,prog),
+    'summary':    lambda iid,cid,prog,dfrom,dto: _report_summary(iid,prog),
+}
+
+_REPORT_TITLES = {
+    'attendance': 'Laporan Kehadiran',
+    'grades': 'Laporan Nilai',
+    'at_risk': 'Mahasiswa Berisiko',
+    'summary': 'Rekapitulasi Semester',
+}
+
+@director.route('/reports/preview', methods=['POST'])
+@director_only
+def reports_preview():
+    rtype = request.values.get('type','attendance')
+    if rtype not in _REPORT_BUILDERS:
+        return jsonify({'success': False, 'message': 'Jenis laporan tidak dikenal.'})
+    iid, cid, prog, dfrom, dto = _report_filters()
+    try:
+        rows = _REPORT_BUILDERS[rtype](iid, cid, prog, dfrom, dto)
+    except Exception as ex:
+        return jsonify({'success': False, 'message': f'Gagal memuat data: {ex}'})
+    columns = list(rows[0].keys()) if rows else []
+    return jsonify({
+        'success': True, 'title': _REPORT_TITLES[rtype],
+        'columns': columns, 'rows': rows[:200], 'total': len(rows)
+    })
+
+@director.route('/reports/export')
+@director_only
+def reports_export():
+    from io import BytesIO
+    rtype  = request.args.get('type','attendance')
+    fmt    = request.args.get('format','xlsx')
+    if rtype not in _REPORT_BUILDERS:
+        flash('Jenis laporan tidak dikenal.','danger')
+        return redirect(url_for('director.reports'))
+    iid, cid, prog, dfrom, dto = _report_filters()
+    rows  = _REPORT_BUILDERS[rtype](iid, cid, prog, dfrom, dto)
+    title = _REPORT_TITLES[rtype]
+    columns = list(rows[0].keys()) if rows else ['Info']
+    if not rows: rows = [{'Info': 'Tidak ada data untuk filter yang dipilih.'}]
+
+    AuditLog.log('report_exported', message=f'{title} ({fmt})')
+    db.session.commit()
+
+    if fmt == 'xlsx':
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        wb = Workbook(); ws = wb.active; ws.title = title[:31]
+        ws.append([title]); ws.merge_cells(start_row=1,start_column=1,end_row=1,end_column=max(len(columns),1))
+        ws['A1'].font = Font(size=14, bold=True, color='4F46E5')
+        ws.append([f"Diekspor: {datetime.utcnow().strftime('%d %B %Y %H:%M')} UTC — Direktur: {current_user.full_name}"])
+        ws.append([])
+        header_row = ws.max_row + 1
+        ws.append(columns)
+        for cell in ws[header_row]:
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor='4F46E5')
+            cell.alignment = Alignment(horizontal='center')
+        for row in rows:
+            ws.append([row.get(c,'') for c in columns])
+        for i, col in enumerate(columns, start=1):
+            width = max(12, min(35, len(str(col))+4))
+            ws.column_dimensions[ws.cell(row=header_row,column=i).column_letter].width = width
+        buf = BytesIO(); wb.save(buf); buf.seek(0)
+        from flask import send_file
+        fname = f"{rtype}_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.xlsx"
+        return send_file(buf, as_attachment=True, download_name=fname,
+                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    else:
+        # Printable HTML — user can "Save as PDF" via browser print dialog
+        return render_template('director/report_print.html',
+            title=title, columns=columns, rows=rows,
+            generated_at=datetime.utcnow(), director=current_user)
+
+@director.route('/announcements', methods=['GET','POST'])
+@director_only
+def announcements():
+    iid = current_user.institution_id
+    if request.method == 'POST':
+        a = Announcement(institution_id=iid, author_id=current_user.id,
+                         title=request.form.get('title'),
+                         content=request.form.get('content'),
+                         target=request.form.get('target','all'),
+                         is_pinned=request.form.get('is_pinned')=='on')
+        db.session.add(a); db.session.flush()
+        # Broadcast notification based on target
+        target = a.target
+        if target in ('all','students'):
+            uids = [u.id for u in User.query.filter_by(
+                institution_id=iid,role='student',is_active=True).all()]
+            notify_many(uids,f'📢 {a.title}',
+                        a.content[:100]+'…' if len(a.content)>100 else a.content,
+                        'info','announcement')
+        if target in ('all','lecturers'):
+            uids = [u.id for u in User.query.filter_by(
+                institution_id=iid,role='lecturer',is_active=True).all()]
+            notify_many(uids,f'📢 {a.title}',
+                        a.content[:100]+'…' if len(a.content)>100 else a.content,
+                        'info','announcement')
+        AuditLog.log('announcement_created',message=a.title)
+        db.session.commit()
+        flash('Pengumuman diterbitkan dan notifikasi terkirim.','success')
+        return redirect(url_for('director.announcements'))
+    anns = Announcement.query.filter_by(institution_id=iid)\
+           .order_by(Announcement.created_at.desc()).all()
+    return render_template('director/announcements.html', announcements=anns)
+
+@director.route('/audit-logs')
+@director_only
+def audit_logs():
+    page = request.args.get('page',1,type=int)
+    logs = AuditLog.query.filter_by(institution_id=current_user.institution_id)\
+           .order_by(AuditLog.created_at.desc())\
+           .paginate(page=page,per_page=30,error_out=False)
+    return render_template('director/audit_logs.html', logs=logs)
+
+@director.route('/settings', methods=['GET','POST'])
+@director_only
+def settings():
+    import uuid
+    inst = Institution.query.get(current_user.institution_id)
+    if request.method == 'POST':
+        ft = request.form.get('form_type','info')
+        if ft == 'logo':
+            lf = request.files.get('logo')
+            if lf and lf.filename:
+                ext = lf.filename.rsplit('.',1)[-1].lower()
+                if ext in {'jpg','jpeg','png','gif','webp','svg'}:
+                    fn = f"logos/logo_{inst.id}_{uuid.uuid4().hex[:8]}.{ext}"
+                    save_dir = os.path.join(app.static_folder,'img','logos')
+                    os.makedirs(save_dir,exist_ok=True)
+                    lf.save(os.path.join(app.static_folder,'img',fn))
+                    inst.logo = fn
+                    db.session.commit()
+                    flash('Logo berhasil diperbarui!','success')
+                else:
+                    flash('Format tidak didukung.','danger')
+        else:
+            inst.name=request.form.get('name',inst.name).strip()
+            inst.phone=request.form.get('phone',inst.phone or '').strip()
+            inst.email=request.form.get('email',inst.email or '').strip()
+            inst.address=request.form.get('address',inst.address or '').strip()
+            inst.website=request.form.get('website',inst.website or '').strip()
+            AuditLog.log('institution_updated','Institution',inst.id)
+            db.session.commit()
+            flash('Pengaturan disimpan!','success')
+        return redirect(url_for('director.settings'))
+    active_users = User.query.filter_by(institution_id=inst.id,is_active=True).count()
+    return render_template('director/settings.html', institution=inst, active_users=active_users)
+
+app.register_blueprint(director)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  LECTURER
+# ═══════════════════════════════════════════════════════════════
+lecturer = Blueprint('lecturer', __name__, url_prefix='/lecturer')
+
+@lecturer.route('/dashboard')
+@lecturer_only
+def dashboard():
+    my_courses = Course.query.filter_by(lecturer_id=current_user.id,is_active=True).all()
+    today = date.today()
+    day_num = today.weekday()
+    today_schedules = []
+    for c in my_courses:
+        for sch in c.schedules:
+            if sch.day_of_week == day_num and sch.is_active:
+                sess = AttendanceSession.query.filter_by(course_id=c.id,session_date=today).first()
+                today_schedules.append({'course':c,'schedule':sch,'session':sess})
+    cids = [c.id for c in my_courses]
+    pending_permits = PermitRequest.query.filter(
+        PermitRequest.course_id.in_(cids),PermitRequest.status=='pending').count() if cids else 0
+    ungraded = Submission.query.join(Assignment).join(Course).filter(
+        Course.lecturer_id==current_user.id, Submission.score.is_(None)).count()
+    upcoming = Assignment.query.join(Course).filter(
+        Course.lecturer_id==current_user.id,
+        Assignment.due_date>=datetime.utcnow(),
+        Assignment.is_published==True
+    ).order_by(Assignment.due_date).limit(5).all()
+    # Recent activity by students
+    recent_subs = Submission.query.join(Assignment).join(Course).filter(
+        Course.lecturer_id==current_user.id
+    ).order_by(Submission.submitted_at.desc()).limit(5).all()
+    recent_checkins = Attendance.query.join(Course).filter(
+        Course.lecturer_id==current_user.id,
+        Attendance.status=='hadir',
+        Attendance.check_in_time.isnot(None)
+    ).order_by(Attendance.check_in_time.desc()).limit(5).all()
+    return render_template('lecturer/dashboard.html',
+        my_courses=my_courses, today_schedules=today_schedules,
+        pending_permits=pending_permits, ungraded=ungraded,
+        upcoming_assignments=upcoming,
+        recent_subs=recent_subs, recent_checkins=recent_checkins)
+
+@lecturer.route('/courses')
+@lecturer_only
+def courses():
+    program_filter = request.args.get('program','all')
+    q = Course.query.filter_by(lecturer_id=current_user.id)
+    if program_filter in ('PPL','DM'):
+        q = q.filter(Course.program==program_filter)
+    cs = q.order_by(Course.academic_year.desc()).all()
+    count_ppl = Course.query.filter_by(lecturer_id=current_user.id,program='PPL').count()
+    count_dm  = Course.query.filter_by(lecturer_id=current_user.id,program='DM').count()
+    return render_template('lecturer/courses.html', courses=cs,
+        program_filter=program_filter, count_ppl=count_ppl, count_dm=count_dm)
+
+@lecturer.route('/courses/create', methods=['GET','POST'])
+@lecturer_only
+def create_course():
+    if request.method == 'POST':
+        iid  = current_user.institution_id
+        program = request.form.get('program','PPL')
+        if program not in ('PPL','DM'): program = 'PPL'
+        code = request.form.get('code','').strip().upper()
+        if Course.query.filter_by(institution_id=iid,code=code).first():
+            flash(f'Kode "{code}" sudah ada.','danger')
+            return redirect(url_for('lecturer.courses'))
+        c = Course(institution_id=iid, lecturer_id=current_user.id,
+                   program=program,
+                   code=code, name=request.form.get('name','').strip(),
+                   description=request.form.get('description','').strip(),
+                   credits=int(request.form.get('credits',3)),
+                   semester=request.form.get('semester',''),
+                   academic_year=request.form.get('academic_year',''),
+                   room=request.form.get('room',''),
+                   capacity=int(request.form.get('capacity',40)), is_active=True)
+        db.session.add(c); db.session.flush()
+        days=request.form.getlist('sch_day[]')
+        starts=request.form.getlist('sch_start[]')
+        ends=request.form.getlist('sch_end[]')
+        for day,start,end in zip(days,starts,ends):
+            if day and start and end:
+                sh,sm=map(int,start.split(':'))
+                eh,em=map(int,end.split(':'))
+                db.session.add(Schedule(course_id=c.id,day_of_week=int(day),
+                    start_time=time(sh,sm), end_time=time(eh,em),
+                    room=c.room, is_active=True))
+        # Notify director
+        dirs = User.query.filter_by(institution_id=iid,role='director',is_active=True).all()
+        notify_many([d.id for d in dirs],
+                    f'📚 Kelas Baru: {c.name}',
+                    f'Dosen {current_user.full_name} membuat kelas baru ({c.code}).',
+                    'info','course')
+        AuditLog.log('course_created','Course',c.id,message=c.name)
+        db.session.commit()
+        flash(f'Kelas "{c.name}" berhasil dibuat.','success')
+        return redirect(url_for('lecturer.courses'))
+    return redirect(url_for('lecturer.courses'))
+
+@lecturer.route('/courses/<int:cid>')
+@lecturer_only
+def course_detail(cid):
+    c = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+    students    = c.students.all()
+    sessions    = AttendanceSession.query.filter_by(course_id=cid)\
+                  .order_by(AttendanceSession.session_date.desc()).limit(10).all()
+    assignments = Assignment.query.filter_by(course_id=cid)\
+                  .order_by(Assignment.due_date.desc()).all()
+    enrolled_ids = {s.id for s in students}
+    available_students = User.query.filter_by(
+        institution_id=current_user.institution_id, role='student', is_active=True
+    ).filter(~User.id.in_(enrolled_ids) if enrolled_ids else True).order_by(User.full_name).all()
+    return render_template('lecturer/course_detail.html',
+        course=c, students=students, sessions=sessions, assignments=assignments,
+        available_students=available_students)
+
+@lecturer.route('/courses/<int:cid>/students/add-existing', methods=['POST'])
+@lecturer_only
+def add_existing_student(cid):
+    c = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+    sid = request.form.get('student_id', type=int)
+    stu = User.query.filter_by(id=sid, institution_id=current_user.institution_id, role='student').first()
+    if not stu:
+        flash('Mahasiswa tidak ditemukan.','danger')
+        return redirect(url_for('lecturer.course_detail', cid=cid))
+    existing = db.session.query(enrollments).filter_by(user_id=sid, course_id=cid).first()
+    if existing:
+        flash(f'{stu.full_name} sudah terdaftar di kelas ini.','warning')
+        return redirect(url_for('lecturer.course_detail', cid=cid))
+    db.session.execute(enrollments.insert().values(user_id=sid, course_id=cid, status='active'))
+    notify(sid, f'📖 Terdaftar di {c.name}',
+           f'Anda didaftarkan ke kelas {c.program} — {c.name} ({c.code}) oleh {current_user.full_name}.',
+           'info','course', url_for('student.course_detail', cid=cid))
+    AuditLog.log('student_added_by_lecturer','Course',cid,message=stu.email)
+    db.session.commit()
+    flash(f'{stu.full_name} berhasil ditambahkan ke kelas {c.name}.','success')
+    return redirect(url_for('lecturer.course_detail', cid=cid))
+
+@lecturer.route('/courses/<int:cid>/students/create', methods=['POST'])
+@lecturer_only
+def create_and_enroll_student(cid):
+    c = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+    email = request.form.get('email','').strip().lower()
+    uname = request.form.get('username','').strip()
+    if not email or not uname:
+        flash('Email dan username wajib diisi.','danger')
+        return redirect(url_for('lecturer.course_detail', cid=cid))
+    if User.query.filter_by(email=email).first():
+        flash('Email sudah terdaftar.','danger')
+        return redirect(url_for('lecturer.course_detail', cid=cid))
+    if User.query.filter_by(username=uname).first():
+        flash('Username sudah digunakan.','danger')
+        return redirect(url_for('lecturer.course_detail', cid=cid))
+    stu = User(institution_id=current_user.institution_id,
+               full_name=request.form.get('full_name','').strip(),
+               email=email, username=uname, role='student', program=c.program,
+               nip_nim=request.form.get('nip_nim','').strip(),
+               phone=request.form.get('phone','').strip(),
+               is_active=True, is_verified=True)
+    stu.set_password(request.form.get('password','mahasiswa123'))
+    db.session.add(stu); db.session.flush()
+    db.session.execute(enrollments.insert().values(user_id=stu.id, course_id=cid, status='active'))
+    notify(stu.id, '🎉 Selamat Datang di OmniClass!',
+           f'Akun Anda dibuat oleh dosen {current_user.full_name} dan langsung terdaftar di kelas '
+           f'{c.program} — {c.name} ({c.code}).', 'success','system',
+           url_for('student.course_detail', cid=cid))
+    AuditLog.log('student_created_by_lecturer','Course',cid,message=email)
+    db.session.commit()
+    flash(f'Akun mahasiswa {stu.full_name} dibuat dan langsung didaftarkan ke {c.name}.','success')
+    return redirect(url_for('lecturer.course_detail', cid=cid))
+
+@lecturer.route('/courses/<int:cid>/students/<int:sid>/remove', methods=['POST'])
+@lecturer_only
+def remove_student(cid, sid):
+    c = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+    db.session.execute(enrollments.delete().where(
+        enrollments.c.user_id==sid, enrollments.c.course_id==cid))
+    notify(sid, f'ℹ️ Dikeluarkan dari {c.name}',
+           f'Anda dikeluarkan dari kelas {c.program} — {c.name} oleh dosen.', 'warning','course')
+    AuditLog.log('student_removed_by_lecturer','Course',cid,message=str(sid))
+    db.session.commit()
+    flash('Mahasiswa dikeluarkan dari kelas.','success')
+    return redirect(url_for('lecturer.course_detail', cid=cid))
+
+@lecturer.route('/courses/<int:cid>/edit', methods=['POST'])
+@lecturer_only
+def edit_course(cid):
+    c = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+    c.name=request.form.get('name',c.name).strip()
+    c.description=request.form.get('description',c.description or '').strip()
+    prog = request.form.get('program')
+    if prog in ('PPL','DM'):
+        c.program = prog
+    c.credits=int(request.form.get('credits',c.credits))
+    c.semester=request.form.get('semester',c.semester or '').strip()
+    c.academic_year=request.form.get('academic_year',c.academic_year or '').strip()
+    c.room=request.form.get('room',c.room or '').strip()
+    c.capacity=int(request.form.get('capacity',c.capacity or 40))
+    Schedule.query.filter_by(course_id=cid).delete()
+    days=request.form.getlist('sch_day[]')
+    starts=request.form.getlist('sch_start[]')
+    ends=request.form.getlist('sch_end[]')
+    for day,start,end in zip(days,starts,ends):
+        if day and start and end:
+            sh,sm=map(int,start.split(':'))
+            eh,em=map(int,end.split(':'))
+            db.session.add(Schedule(course_id=cid,day_of_week=int(day),
+                start_time=time(sh,sm),end_time=time(eh,em),
+                room=c.room,is_active=True))
+    # Notify enrolled students about schedule update
+    notify_many([s.id for s in c.students.all()],
+                f'🔄 Jadwal Diperbarui: {c.name}',
+                f'Jadwal/info kelas {c.name} telah diperbarui oleh dosen.',
+                'warning','course')
+    AuditLog.log('course_updated','Course',cid,message=c.name)
+    db.session.commit()
+    flash(f'Kelas "{c.name}" berhasil diperbarui.','success')
+    return redirect(url_for('lecturer.courses'))
+
+@lecturer.route('/courses/<int:cid>/toggle', methods=['POST'])
+@lecturer_only
+def toggle_course(cid):
+    c = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+    c.is_active = not c.is_active
+    AuditLog.log('course_toggle','Course',cid)
+    db.session.commit()
+    flash(f'Kelas "{c.name}" {"diaktifkan" if c.is_active else "dinonaktifkan"}.','success')
+    return redirect(url_for('lecturer.courses'))
+
+@lecturer.route('/courses/<int:cid>/delete', methods=['POST'])
+@lecturer_only
+def delete_course(cid):
+    c = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+    if c.student_count > 0:
+        flash(f'Tidak dapat hapus — masih ada {c.student_count} mahasiswa.','danger')
+        return redirect(url_for('lecturer.courses'))
+    name = c.name
+    db.session.delete(c)
+    AuditLog.log('course_deleted','Course',cid,message=name)
+    db.session.commit()
+    flash(f'Kelas "{name}" dihapus.','success')
+    return redirect(url_for('lecturer.courses'))
+
+# ── Attendance ────────────────────────────────────────────────────
+@lecturer.route('/attendance')
+@lecturer_only
+def attendance():
+    cs  = Course.query.filter_by(lecturer_id=current_user.id,is_active=True).all()
+    cid = request.args.get('course_id',type=int)
+    sc  = None; sessions = []
+    if cid:
+        sc = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+        sessions = AttendanceSession.query.filter_by(course_id=cid)\
+                   .order_by(AttendanceSession.session_date.desc()).all()
+    return render_template('lecturer/attendance.html',
+        courses=cs, selected_course=sc, sessions=sessions)
+
+@lecturer.route('/attendance/start', methods=['POST'])
+@lecturer_only
+def start_session():
+    cid   = request.form.get('course_id',type=int)
+    c     = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+    today = date.today()
+    exist = AttendanceSession.query.filter_by(course_id=cid,session_date=today).first()
+    if exist:
+        flash('Sesi absensi hari ini sudah ada.','warning')
+        return redirect(url_for('lecturer.attendance_session',sid=exist.id))
+    last = AttendanceSession.query.filter_by(course_id=cid)\
+           .order_by(AttendanceSession.meeting_number.desc()).first()
+    mn   = (last.meeting_number+1) if last else 1
+    sess = AttendanceSession(
+        course_id=cid, lecturer_id=current_user.id,
+        session_date=today, topic=request.form.get('topic',''),
+        method=request.form.get('method','qr_code'),
+        meeting_number=mn, start_time=datetime.utcnow())
+    sess.generate_qr_token()
+    db.session.add(sess); db.session.flush()
+    students = c.students.all()
+    for s in students:
+        db.session.add(Attendance(session_id=sess.id,course_id=cid,
+                                  student_id=s.id,status='alfa'))
+    # Notify all enrolled students
+    notify_many([s.id for s in students],
+                f'📋 Absensi Dimulai: {c.name}',
+                f'Sesi #{mn} dimulai. Scan QR untuk absen.',
+                'info','attendance')
+    AuditLog.log('session_started','AttendanceSession',sess.id,
+                 message=f'{c.name} #{mn}')
+    db.session.commit()
+    flash(f'Sesi #{mn} dimulai.','success')
+    return redirect(url_for('lecturer.attendance_session',sid=sess.id))
+
+@lecturer.route('/attendance/session/<int:sid>')
+@lecturer_only
+def attendance_session(sid):
+    sess = AttendanceSession.query.filter_by(id=sid,lecturer_id=current_user.id).first_or_404()
+    records = Attendance.query.filter_by(session_id=sid).all()
+    return render_template('lecturer/attendance_session.html',session=sess,records=records)
+
+@lecturer.route('/attendance/session/<int:sid>/refresh-qr', methods=['POST'])
+@lecturer_only
+def refresh_qr(sid):
+    sess = AttendanceSession.query.filter_by(id=sid,lecturer_id=current_user.id).first_or_404()
+    token = sess.generate_qr_token()
+    db.session.commit()
+    return jsonify({'token':token,'expires_at':sess.qr_expires_at.isoformat()})
+
+@lecturer.route('/attendance/session/<int:sid>/update', methods=['POST'])
+@lecturer_only
+def update_attendance(sid):
+    AttendanceSession.query.filter_by(id=sid,lecturer_id=current_user.id).first_or_404()
+    att = Attendance.query.filter_by(
+        session_id=sid, student_id=request.form.get('student_id',type=int)).first()
+    if att:
+        att.status     = request.form.get('status','alfa')
+        att.verified_by= current_user.id
+        db.session.commit()
+    return jsonify({'success':True})
+
+@lecturer.route('/attendance/session/<int:sid>/close', methods=['POST'])
+@lecturer_only
+def close_session(sid):
+    sess = AttendanceSession.query.filter_by(id=sid,lecturer_id=current_user.id).first_or_404()
+    sess.is_open  = False
+    sess.end_time = datetime.utcnow()
+    db.session.commit()
+    flash('Sesi absensi ditutup.','success')
+    return redirect(url_for('lecturer.attendance'))
+
+# ── Permits ────────────────────────────────────────────────────────
+@lecturer.route('/permits')
+@lecturer_only
+def permits():
+    cids = [c.id for c in Course.query.filter_by(lecturer_id=current_user.id).all()]
+    prs  = PermitRequest.query.filter(PermitRequest.course_id.in_(cids))\
+           .order_by(PermitRequest.created_at.desc()).all() if cids else []
+    return render_template('lecturer/permits.html', permits=prs)
+
+@lecturer.route('/permits/<int:pid>/review', methods=['POST'])
+@lecturer_only
+def review_permit(pid):
+    p = PermitRequest.query.get_or_404(pid)
+    p.status      = 'approved' if request.form.get('action')=='approve' else 'rejected'
+    p.reviewed_by = current_user.id
+    p.reviewed_at = datetime.utcnow()
+    p.review_notes= request.form.get('notes','')
+    if p.status=='approved' and p.session_id:
+        att = Attendance.query.filter_by(session_id=p.session_id,student_id=p.student_id).first()
+        if att: att.status = p.type
+    notify(p.student_id,
+           f'{"✅" if p.status=="approved" else "❌"} Izin {p.status.title()}',
+           f'Pengajuan {p.type} Anda untuk {p.course.name} telah {p.status}.',
+           'success' if p.status=='approved' else 'danger','attendance')
+    db.session.commit()
+    flash(f'Izin {p.status}.','success')
+    return redirect(url_for('lecturer.permits'))
+
+# ── Assignments ────────────────────────────────────────────────────
+@lecturer.route('/assignments')
+@lecturer_only
+def assignments():
+    cs  = Course.query.filter_by(lecturer_id=current_user.id,is_active=True).all()
+    cid = request.args.get('course_id',type=int)
+    sc  = None; asgns = []
+    if cid:
+        sc    = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+        asgns = Assignment.query.filter_by(course_id=cid).order_by(Assignment.due_date.desc()).all()
+    return render_template('lecturer/assignments.html',
+        courses=cs, selected_course=sc, assignments=asgns)
+
+@lecturer.route('/assignments/create', methods=['GET','POST'])
+@lecturer_only
+def create_assignment():
+    cs = Course.query.filter_by(lecturer_id=current_user.id,is_active=True).all()
+    if request.method == 'POST':
+        due = datetime.strptime(request.form.get('due_date'),'%Y-%m-%dT%H:%M')
+        a = Assignment(
+            course_id=request.form.get('course_id',type=int),
+            lecturer_id=current_user.id,
+            title=request.form.get('title'),
+            description=request.form.get('description',''),
+            type=request.form.get('type','tugas'),
+            max_score=float(request.form.get('max_score',100)),
+            due_date=due,
+            late_penalty=float(request.form.get('late_penalty',10)),
+            allow_late=request.form.get('allow_late')=='on',
+            is_published=request.form.get('is_published')=='on')
+        db.session.add(a); db.session.flush()
+        c = Course.query.get(a.course_id)
+        # Auto-open (or refresh) today's attendance QR session for this course so students
+        # must check in before working on the assignment
+        if a.is_published:
+            today_sess = AttendanceSession.query.filter_by(
+                course_id=c.id, session_date=date.today()).first()
+            if not today_sess:
+                meeting_no = AttendanceSession.query.filter_by(course_id=c.id).count() + 1
+                today_sess = AttendanceSession(
+                    course_id=c.id, lecturer_id=current_user.id, session_date=date.today(),
+                    meeting_number=meeting_no, topic=f'Sesi Tugas: {a.title}', is_open=True)
+                db.session.add(today_sess)
+            elif not today_sess.is_open:
+                today_sess.is_open = True
+            today_sess.generate_qr_token()
+        # Notify enrolled students
+        notify_many([s.id for s in c.students.all()],
+                    f'📝 Tugas Baru: {a.title}',
+                    f'Tugas baru di {c.name} — deadline {due.strftime("%d %b %Y, %H:%M")}. '
+                    f'Absen QR otomatis aktif, silakan check-in sebelum mengerjakan.',
+                    'warning','assignment',
+                    url_for('student.assignment_detail',aid=a.id))
+        AuditLog.log('assignment_created','Assignment',a.id,message=a.title)
+        db.session.commit()
+        flash(f'Tugas "{a.title}" dibuat. Sesi absensi QR otomatis aktif untuk kelas ini.','success')
+        return redirect(url_for('lecturer.assignments',course_id=a.course_id))
+    return render_template('lecturer/create_assignment.html', courses=cs)
+
+@lecturer.route('/assignments/<int:aid>/submissions')
+@lecturer_only
+def submissions(aid):
+    a = Assignment.query.join(Course).filter(
+        Assignment.id==aid,Course.lecturer_id==current_user.id).first_or_404()
+    subs = Submission.query.filter_by(assignment_id=aid).all()
+    return render_template('lecturer/submissions.html', assignment=a, submissions=subs)
+
+def sync_assignment_grade(student_id, course_id):
+    """Recompute Grade.assignment_score from all graded Submission scores in this course,
+    then recalculate total_score/letter/gpa. Called whenever a lecturer grades/revises a submission."""
+    subs = db.session.query(Submission).join(Assignment).filter(
+        Assignment.course_id == course_id,
+        Submission.student_id == student_id,
+        Submission.score.isnot(None)
+    ).all()
+    g = Grade.query.filter_by(course_id=course_id, student_id=student_id).first()
+    if not g:
+        g = Grade(course_id=course_id, student_id=student_id)
+        db.session.add(g)
+    if subs:
+        pct_scores = [(s.score / s.assignment.max_score * 100) for s in subs if s.assignment.max_score]
+        g.assignment_score = round(sum(pct_scores) / len(pct_scores), 2) if pct_scores else 0
+    else:
+        g.assignment_score = 0
+    g.calculate_total()
+    return g
+
+@lecturer.route('/assignments/<int:aid>/grade/<int:subid>', methods=['POST'])
+@lecturer_only
+def grade_submission(aid, subid):
+    sub = Submission.query.filter_by(id=subid,assignment_id=aid).first_or_404()
+    sub.score     = float(request.form.get('score',0))
+    sub.feedback  = request.form.get('feedback','')
+    sub.graded_by = current_user.id
+    sub.graded_at = datetime.utcnow()
+    sub.status    = 'graded'
+    g = sync_assignment_grade(sub.student_id, sub.assignment.course_id)
+    notify(sub.student_id,
+           f'📊 Tugas Dinilai: {sub.assignment.title}',
+           f'Nilai Anda: {sub.score}/{sub.assignment.max_score}. {sub.feedback[:80] if sub.feedback else ""} '
+           f'Nilai tugas keseluruhan di kelas ini kini {g.assignment_score} (Total: {g.total_score}, {g.letter_grade}).',
+           'success','assignment',
+           url_for('student.assignment_detail',aid=aid))
+    db.session.commit()
+    return jsonify({'success':True,'score':sub.score,
+                     'assignment_score':g.assignment_score,'total_score':g.total_score,'letter':g.letter_grade})
+
+@lecturer.route('/assignments/<int:aid>/submissions/<int:subid>/revision', methods=['POST'])
+@lecturer_only
+def request_revision(aid, subid):
+    a = Assignment.query.join(Course).filter(
+        Assignment.id==aid, Course.lecturer_id==current_user.id).first_or_404()
+    sub = Submission.query.filter_by(id=subid, assignment_id=aid).first_or_404()
+    notes = request.form.get('notes','').strip()
+    if not notes:
+        return jsonify({'success': False, 'message': 'Catatan revisi wajib diisi.'})
+    sub.status = 'revision'
+    sub.revision_notes = notes
+    sub.revision_count = (sub.revision_count or 0) + 1
+    sub.last_revision_at = datetime.utcnow()
+    sub.score = None
+    sync_assignment_grade(sub.student_id, a.course_id)
+    notify(sub.student_id,
+           f'🔁 Perlu Revisi: {a.title}',
+           f'Dosen meminta revisi tugas "{a.title}". Catatan: {notes[:120]}',
+           'warning','assignment', url_for('student.assignment_detail', aid=aid))
+    AuditLog.log('submission_revision_requested','Submission',sub.id)
+    db.session.commit()
+    return jsonify({'success': True, 'status': sub.status, 'revision_count': sub.revision_count})
+
+@lecturer.route('/assignments/<int:aid>/submissions/<int:subid>/detail')
+@lecturer_only
+def submission_detail(aid, subid):
+    Assignment.query.join(Course).filter(
+        Assignment.id==aid, Course.lecturer_id==current_user.id).first_or_404()
+    sub = Submission.query.filter_by(id=subid, assignment_id=aid).first_or_404()
+    kind = file_kind(sub.file_name) if sub.file_name else None
+    return jsonify({
+        'success': True,
+        'student_name': sub.student.full_name,
+        'nim': sub.student.nip_nim or sub.student.username,
+        'avatar': sub.student.avatar_url,
+        'submitted_at': sub.submitted_at.strftime('%d %B %Y, %H:%M'),
+        'is_late': sub.is_late,
+        'text_content': sub.text_content or '',
+        'file_url': sub.file_url,
+        'download_url': url_for('lecturer.download_submission_file', aid=aid, subid=subid) if sub.file_url else None,
+        'file_name': sub.file_name,
+        'file_size': human_size(sub.file_size) if sub.file_size else None,
+        'file_kind': kind,
+        'status': sub.status,
+        'score': sub.score,
+        'feedback': sub.feedback or '',
+        'revision_notes': sub.revision_notes or '',
+        'revision_count': sub.revision_count or 0,
+        'last_revision_at': sub.last_revision_at.strftime('%d %B %Y, %H:%M') if sub.last_revision_at else None,
+        'max_score': sub.assignment.max_score,
+    })
+
+@lecturer.route('/assignments/<int:aid>/submissions/<int:subid>/download')
+@lecturer_only
+def download_submission_file(aid, subid):
+    from flask import send_file, abort
+    Assignment.query.join(Course).filter(
+        Assignment.id==aid, Course.lecturer_id==current_user.id).first_or_404()
+    sub = Submission.query.filter_by(id=subid, assignment_id=aid).first_or_404()
+    if not sub.file_url:
+        abort(404)
+    disk_path = os.path.join(app.static_folder, sub.file_url.split('/static/',1)[-1])
+    if not os.path.isfile(disk_path):
+        abort(404)
+    return send_file(disk_path, as_attachment=True,
+                      download_name=sub.file_name or os.path.basename(disk_path))
+
+@lecturer.route('/assignments/<int:aid>/submissions/<int:subid>/zip-contents')
+@lecturer_only
+def submission_zip_contents(aid, subid):
+    Assignment.query.join(Course).filter(
+        Assignment.id==aid, Course.lecturer_id==current_user.id).first_or_404()
+    sub = Submission.query.filter_by(id=subid, assignment_id=aid).first_or_404()
+    if not sub.file_url or file_kind(sub.file_name or '') != 'zip':
+        return jsonify({'success': False, 'message': 'Bukan file ZIP.'})
+    import zipfile
+    disk_path = os.path.join(app.static_folder, sub.file_url.split('/static/',1)[-1])
+    if not os.path.isfile(disk_path):
+        return jsonify({'success': False, 'message': 'File tidak ditemukan di server.'})
+    if not zipfile.is_zipfile(disk_path):
+        return jsonify({'success': False,
+                         'message': 'File ini bukan format ZIP standar (mungkin .rar/.7z). Gunakan tombol Unduh untuk membuka di aplikasi ekstraksi.'})
+    try:
+        entries = []
+        with zipfile.ZipFile(disk_path) as zf:
+            bad = zf.testzip()
+            for info in zf.infolist():
+                if info.is_dir(): continue
+                entries.append({'name': info.filename, 'size': human_size(info.file_size)})
+        return jsonify({'success': True, 'entries': entries[:300], 'total': len(entries)})
+    except Exception as ex:
+        return jsonify({'success': False, 'message': f'Gagal membaca isi ZIP: {ex}'})
+
+# ── Grades ─────────────────────────────────────────────────────────
+@lecturer.route('/grades')
+@lecturer_only
+def grades():
+    cs  = Course.query.filter_by(lecturer_id=current_user.id,is_active=True).all()
+    cid = request.args.get('course_id',type=int)
+    sc  = None; gdata = []
+    if cid:
+        sc = Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+        for s in sc.students.all():
+            g = Grade.query.filter_by(course_id=cid,student_id=s.id).first()
+            if not g:
+                g = Grade(course_id=cid,student_id=s.id)
+                db.session.add(g)
+            gdata.append({'student':s,'grade':g})
+        db.session.commit()
+    return render_template('lecturer/grades.html',
+        courses=cs, selected_course=sc, grade_data=gdata)
+
+@lecturer.route('/grades/update', methods=['POST'])
+@lecturer_only
+def update_grade():
+    cid = request.form.get('course_id',type=int)
+    sid = request.form.get('student_id',type=int)
+    Course.query.filter_by(id=cid,lecturer_id=current_user.id).first_or_404()
+    g = Grade.query.filter_by(course_id=cid,student_id=sid).first()
+    if not g:
+        g = Grade(course_id=cid,student_id=sid); db.session.add(g)
+    g.assignment_score=float(request.form.get('assignment_score',0))
+    g.quiz_score=float(request.form.get('quiz_score',0))
+    g.midterm_score=float(request.form.get('midterm_score',0))
+    g.final_score=float(request.form.get('final_score',0))
+    g.attendance_score=float(request.form.get('attendance_score',0))
+    g.updated_by=current_user.id
+    g.calculate_total()
+    # Notify student
+    notify(sid,
+           f'📈 Nilai Diperbarui',
+           f'Nilai Anda di {g.course.name} diperbarui: {g.total_score} ({g.letter_grade}).',
+           'info','grade', url_for('student.grades'))
+    AuditLog.log('grade_updated','Grade',g.id)
+    db.session.commit()
+    return jsonify({'success':True,'total':g.total_score,'letter':g.letter_grade})
+
+app.register_blueprint(lecturer)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  STUDENT
+# ═══════════════════════════════════════════════════════════════
+student = Blueprint('student', __name__, url_prefix='/student')
+
+def _enrolled(uid=None):
+    uid = uid or current_user.id
+    return db.session.query(Course).join(
+        enrollments,Course.id==enrollments.c.course_id
+    ).filter(enrollments.c.user_id==uid, Course.is_active==True).all()
+
+@student.route('/dashboard')
+@student_only
+def dashboard():
+    uid      = current_user.id
+    enrolled = _enrolled()
+    today    = date.today()
+    day_num  = today.weekday()
+    today_schedule = []
+    for c in enrolled:
+        for sch in c.schedules:
+            if sch.day_of_week==day_num and sch.is_active:
+                today_schedule.append({'course':c,'schedule':sch})
+    ts = AttendanceSession.query.join(Course).join(
+        enrollments,Course.id==enrollments.c.course_id
+    ).filter(enrollments.c.user_id==uid,AttendanceSession.is_open==False).count()
+    pr = Attendance.query.filter_by(student_id=uid,status='hadir').count()
+    att_rate = round(pr/ts*100,1) if ts else 0
+    cids = [c.id for c in enrolled]
+    upcoming = Assignment.query.filter(
+        Assignment.course_id.in_(cids),
+        Assignment.due_date>=datetime.utcnow(),
+        Assignment.is_published==True
+    ).order_by(Assignment.due_date).limit(5).all() if cids else []
+    sub_ids = {s.assignment_id for s in Submission.query.filter_by(student_id=uid).all()}
+    unsubmitted = [a for a in upcoming if a.id not in sub_ids]
+    gs = Grade.query.filter_by(student_id=uid).filter(Grade.gpa_points.isnot(None)).all()
+    tg = sum(g.gpa_points*(g.course.credits or 3) for g in gs)
+    tc = sum(g.course.credits or 3 for g in gs)
+    gpa = round(tg/tc,2) if tc else 0
+    anns = Announcement.query.filter(
+        Announcement.institution_id==current_user.institution_id,
+        Announcement.is_published==True,
+        Announcement.target.in_(['all','students'])
+    ).order_by(Announcement.is_pinned.desc(),Announcement.created_at.desc()).limit(5).all()
+    open_sessions = AttendanceSession.query.join(Course).filter(
+        Course.id.in_(cids), AttendanceSession.is_open==True,
+        AttendanceSession.session_date==today).all() if cids else []
+    return render_template('student/dashboard.html',
+        enrolled=enrolled, today_schedule=today_schedule,
+        att_rate=att_rate, total_sessions=ts, present_sessions=pr,
+        upcoming=upcoming, unsubmitted=unsubmitted,
+        gpa=gpa, announcements=anns, open_sessions=open_sessions)
+
+@student.route('/courses')
+@student_only
+def courses():
+    return render_template('student/courses.html', courses=_enrolled())
+
+@student.route('/courses/<int:cid>')
+@student_only
+def course_detail(cid):
+    en = _enrolled()
+    if not any(c.id==cid for c in en):
+        flash('Anda tidak terdaftar di kelas ini.','danger')
+        return redirect(url_for('student.courses'))
+    c = Course.query.get_or_404(cid)
+    sessions = AttendanceSession.query.filter_by(course_id=cid).all()
+    att_map  = {a.session_id:a for a in Attendance.query.filter_by(
+        student_id=current_user.id,course_id=cid).all()}
+    att_data = [{'session':s,'record':att_map.get(s.id)} for s in sessions]
+    asgns    = Assignment.query.filter_by(course_id=cid,is_published=True)\
+               .order_by(Assignment.due_date).all()
+    sub_ids  = {s.assignment_id for s in Submission.query.filter_by(student_id=current_user.id).all()}
+    active_session = AttendanceSession.query.filter_by(
+        course_id=cid, session_date=date.today(), is_open=True).first()
+    already_checked_in = False
+    if active_session:
+        rec = Attendance.query.filter_by(session_id=active_session.id, student_id=current_user.id).first()
+        already_checked_in = bool(rec and rec.status=='hadir')
+    return render_template('student/course_detail.html',
+        course=c, att_data=att_data, assignments=asgns, submitted_ids=sub_ids,
+        active_session=active_session, already_checked_in=already_checked_in)
+
+@student.route('/courses/<int:cid>/qr-token')
+@student_only
+def course_qr_token(cid):
+    en = _enrolled()
+    if not any(c.id==cid for c in en):
+        return jsonify({'active': False})
+    sess = AttendanceSession.query.filter_by(
+        course_id=cid, session_date=date.today(), is_open=True).first()
+    if not sess:
+        return jsonify({'active': False})
+    if not sess.is_qr_valid():
+        sess.generate_qr_token()
+        db.session.commit()
+    rec = Attendance.query.filter_by(session_id=sess.id, student_id=current_user.id).first()
+    return jsonify({
+        'active': True,
+        'token': sess.qr_token,
+        'expires_at': sess.qr_expires_at.isoformat(),
+        'meeting_number': sess.meeting_number,
+        'topic': sess.topic or '',
+        'already_checked_in': bool(rec and rec.status=='hadir'),
+    })
+
+@student.route('/attendance')
+@student_only
+def attendance():
+    en   = _enrolled()
+    cid  = request.args.get('course_id',type=int)
+    sc   = None; att_data=[]; summary={}
+    if cid and any(c.id==cid for c in en):
+        sc = Course.query.get(cid)
+        sessions = AttendanceSession.query.filter_by(course_id=cid)\
+                   .order_by(AttendanceSession.session_date.desc()).all()
+        att_map  = {a.session_id:a for a in Attendance.query.filter_by(
+            student_id=current_user.id,course_id=cid).all()}
+        att_data = [{'session':s,'record':att_map.get(s.id)} for s in sessions]
+        total    = len(sessions)
+        present  = sum(1 for d in att_data if d['record'] and d['record'].status=='hadir')
+        izin     = sum(1 for d in att_data if d['record'] and d['record'].status in('izin','sakit'))
+        alfa     = total-present-izin
+        rate     = round(present/total*100,1) if total else 0
+        summary  = dict(total=total,present=present,izin=izin,alfa=alfa,rate=rate)
+    return render_template('student/attendance.html',
+        courses=en, selected_course=sc, att_data=att_data, summary=summary)
+
+@student.route('/attendance/checkin', methods=['POST'])
+@student_only
+def checkin():
+    token = request.form.get('token','').strip()
+    cid   = request.form.get('course_id',type=int)
+    lat   = request.form.get('latitude',type=float)
+    lng   = request.form.get('longitude',type=float)
+    en    = _enrolled()
+    if not any(c.id==cid for c in en):
+        return jsonify({'success':False,'message':'Anda tidak terdaftar di kelas ini.'})
+    sess = AttendanceSession.query.filter_by(qr_token=token,course_id=cid,is_open=True).first()
+    if not sess:
+        return jsonify({'success':False,'message':'Token tidak valid atau sesi sudah ditutup.'})
+    if not sess.is_qr_valid():
+        return jsonify({'success':False,'message':'Token QR kedaluwarsa. Minta refresh ke dosen.'})
+    att = Attendance.query.filter_by(session_id=sess.id,student_id=current_user.id).first()
+    if att and att.status=='hadir':
+        return jsonify({'success':False,'message':'Anda sudah tercatat hadir.'})
+    if not att:
+        att = Attendance(session_id=sess.id,course_id=cid,student_id=current_user.id)
+        db.session.add(att)
+    att.status='hadir'; att.check_in_time=datetime.utcnow()
+    att.method_used='qr_code'; att.latitude=lat; att.longitude=lng
+    att.ip_address=request.remote_addr
+    # Notify lecturer
+    notify(sess.lecturer_id,
+           f'✅ {current_user.full_name} Hadir',
+           f'{current_user.full_name} baru saja absen di {sess.course.name} #{sess.meeting_number}.',
+           'success','attendance')
+    db.session.commit()
+    return jsonify({'success':True,'message':'Kehadiran berhasil dicatat! ✅'})
+
+@student.route('/permits/submit', methods=['GET','POST'])
+@student_only
+def submit_permit():
+    en = _enrolled()
+    if request.method == 'POST':
+        cid = request.form.get('course_id',type=int)
+        c   = Course.query.get(cid)
+        p   = PermitRequest(
+            student_id=current_user.id, course_id=cid,
+            type=request.form.get('type','izin'),
+            reason=request.form.get('reason'),
+            request_date=datetime.strptime(request.form.get('request_date'),'%Y-%m-%d').date())
+        proof = request.files.get('document')
+        if proof and proof.filename:
+            meta = save_upload(proof, f'permits/{current_user.id}')
+            p.document_url = meta['url']
+        db.session.add(p); db.session.flush()
+        # Notify lecturer
+        if c:
+            notify(c.lecturer_id,
+                   f'📋 Izin dari {current_user.full_name}',
+                   f'{current_user.full_name} mengajukan {p.type} untuk {c.name}.',
+                   'warning','attendance',
+                   url_for('lecturer.permits'))
+        AuditLog.log('permit_submitted','PermitRequest',p.id)
+        db.session.commit()
+        flash('Pengajuan izin terkirim ke dosen.','success')
+        return redirect(url_for('student.attendance'))
+    return render_template('student/submit_permit.html', courses=en)
+
+@student.route('/assignments')
+@student_only
+def assignments():
+    en      = _enrolled()
+    cids    = [c.id for c in en]
+    ftype   = request.args.get('filter','all')
+    sub_ids = {s.assignment_id for s in Submission.query.filter_by(student_id=current_user.id).all()}
+    query   = Assignment.query.filter(
+        Assignment.course_id.in_(cids),Assignment.is_published==True
+    ) if cids else Assignment.query.filter_by(id=-1)
+    if ftype=='pending':
+        query = query.filter(~Assignment.id.in_(sub_ids),Assignment.due_date>=datetime.utcnow())
+    elif ftype=='submitted':
+        query = query.filter(Assignment.id.in_(sub_ids))
+    elif ftype=='overdue':
+        query = query.filter(~Assignment.id.in_(sub_ids),Assignment.due_date<datetime.utcnow())
+    asgns    = query.order_by(Assignment.due_date).all()
+    subs_map = {s.assignment_id:s for s in Submission.query.filter_by(student_id=current_user.id).all()}
+    return render_template('student/assignments.html',
+        assignments=asgns, submissions_map=subs_map, filter_type=ftype)
+
+def _assignment_attendance_gate(course_id):
+    """Return (active_session, already_checked_in) for the QR check-in gate before an assignment."""
+    active_session = AttendanceSession.query.filter_by(
+        course_id=course_id, session_date=date.today(), is_open=True).first()
+    if not active_session:
+        return None, True
+    rec = Attendance.query.filter_by(session_id=active_session.id, student_id=current_user.id).first()
+    return active_session, bool(rec and rec.status == 'hadir')
+
+@student.route('/assignments/<int:aid>')
+@student_only
+def assignment_detail(aid):
+    a   = Assignment.query.get_or_404(aid)
+    sub = Submission.query.filter_by(assignment_id=aid,student_id=current_user.id).first()
+    active_session, checked_in = _assignment_attendance_gate(a.course_id)
+    return render_template('student/assignment_detail.html', assignment=a, submission=sub,
+        active_session=active_session, already_checked_in=checked_in)
+
+@student.route('/assignments/<int:aid>/submit', methods=['POST'])
+@student_only
+def submit_assignment(aid):
+    a = Assignment.query.get_or_404(aid)
+    active_session, checked_in = _assignment_attendance_gate(a.course_id)
+    if active_session and not checked_in:
+        flash('Anda harus absen (scan QR) terlebih dahulu sebelum mengerjakan/mengumpulkan tugas ini.','danger')
+        return redirect(url_for('student.assignment_detail',aid=aid))
+    existing = Submission.query.filter_by(assignment_id=aid,student_id=current_user.id).first()
+    is_late = datetime.utcnow() > a.due_date
+    uploaded = request.files.get('file')
+    file_meta = None
+    if uploaded and uploaded.filename:
+        file_meta = save_upload(uploaded, f'submissions/{aid}')
+
+    if existing:
+        if existing.status != 'revision':
+            flash('Sudah dikumpulkan.','warning')
+            return redirect(url_for('student.assignment_detail',aid=aid))
+        # Resubmission after lecturer requested revision — text and/or file can be replaced
+        existing.text_content = request.form.get('text_content','')
+        if file_meta:
+            existing.file_url  = file_meta['url']
+            existing.file_name = file_meta['name']
+            existing.file_size = file_meta['size']
+        existing.submitted_at = datetime.utcnow()
+        existing.is_late = is_late
+        existing.status = 'submitted'
+        notify(a.lecturer_id,
+               f'🔁 Revisi Dikumpulkan: {a.title}',
+               f'{current_user.full_name} mengumpulkan ulang (revisi ke-{existing.revision_count}) "{a.title}".',
+               'info','assignment', url_for('lecturer.submissions',aid=aid))
+        AuditLog.log('assignment_resubmitted','Submission',existing.id)
+        db.session.commit()
+        flash('Revisi tugas berhasil dikumpulkan ulang!','success')
+        return redirect(url_for('student.assignment_detail',aid=aid))
+
+    sub = Submission(assignment_id=aid,student_id=current_user.id,
+                     text_content=request.form.get('text_content',''),
+                     is_late=is_late)
+    if file_meta:
+        sub.file_url  = file_meta['url']
+        sub.file_name = file_meta['name']
+        sub.file_size = file_meta['size']
+    db.session.add(sub); db.session.flush()
+    # Notify lecturer
+    notify(a.lecturer_id,
+           f'📤 Pengumpulan Baru: {a.title}',
+           f'{current_user.full_name} mengumpulkan "{a.title}"{"(terlambat)" if is_late else ""}.',
+           'info','assignment',
+           url_for('lecturer.submissions',aid=aid))
+    AuditLog.log('assignment_submitted','Submission',sub.id)
+    db.session.commit()
+    flash('Tugas berhasil dikumpulkan!' if not is_late
+          else f'Tugas dikumpulkan terlambat (penalti {a.late_penalty}%/hari).',
+          'success' if not is_late else 'warning')
+    return redirect(url_for('student.assignment_detail',aid=aid))
+
+@student.route('/grades')
+@student_only
+def grades():
+    en   = _enrolled()
+    gdata=[]; tg=0; tc=0
+    for c in en:
+        g = Grade.query.filter_by(student_id=current_user.id,course_id=c.id).first()
+        gdata.append({'course':c,'grade':g})
+        if g and g.gpa_points is not None:
+            tg += g.gpa_points*(c.credits or 3)
+            tc += c.credits or 3
+    gpa = round(tg/tc,2) if tc else 0
+    return render_template('student/grades.html',
+        grade_data=gdata, gpa=gpa, total_credits=tc)
+
+app.register_blueprint(student)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  API
+# ═══════════════════════════════════════════════════════════════
+api = Blueprint('api', __name__, url_prefix='/api/v1')
+
+@api.route('/notifications')
+@login_required
+def get_notifications():
+    ns = Notification.query.filter_by(user_id=current_user.id,is_read=False)\
+         .order_by(Notification.created_at.desc()).limit(10).all()
+    return jsonify([{'id':n.id,'title':n.title,'message':n.message,
+                     'type':n.type,'time_ago':n.time_ago,'link':n.link} for n in ns])
+
+@api.route('/notifications/<int:nid>/read', methods=['POST'])
+@login_required
+def mark_read(nid):
+    n = Notification.query.filter_by(id=nid,user_id=current_user.id).first_or_404()
+    n.mark_read(); db.session.commit()
+    return jsonify({'success':True})
+
+@api.route('/health')
+def health(): return jsonify({'status':'ok','app':'OmniClass'})
+
+app.register_blueprint(api)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  ANALYTICS HELPERS
+# ═══════════════════════════════════════════════════════════════
+def _get_at_risk(iid, detailed=False):
+    students = User.query.filter_by(institution_id=iid,role='student',is_active=True).all()
+    result   = []
+    for s in students:
+        rs=0; reasons=[]
+        recs = Attendance.query.filter_by(student_id=s.id).all()
+        if recs:
+            rate = sum(1 for r in recs if r.status=='hadir')/len(recs)*100
+            if rate < 75: rs+=2; reasons.append(f'Kehadiran {rate:.0f}%')
+        fails = [g for g in Grade.query.filter_by(student_id=s.id).all()
+                 if g.gpa_points and g.gpa_points < 2.0]
+        if fails: rs+=len(fails); reasons.append(f'{len(fails)} MK di bawah standar')
+        if rs>0: result.append({'student':s,'risk_score':rs,'reasons':reasons})
+    return sorted(result,key=lambda x:x['risk_score'],reverse=True)[:20]
+
+def _weekly_chart(iid):
+    labels=[]; hadir=[]; alfa=[]
+    for i in range(6,-1,-1):
+        d=date.today()-timedelta(days=i*7)
+        ws=d-timedelta(days=d.weekday()); we=ws+timedelta(days=6)
+        sids=[s.id for s in AttendanceSession.query.join(Course).filter(
+            Course.institution_id==iid,
+            AttendanceSession.session_date>=ws,
+            AttendanceSession.session_date<=we).all()]
+        h=Attendance.query.filter(Attendance.session_id.in_(sids),Attendance.status=='hadir').count() if sids else 0
+        a=Attendance.query.filter(Attendance.session_id.in_(sids),Attendance.status=='alfa').count()  if sids else 0
+        labels.append(ws.strftime('%d/%m')); hadir.append(h); alfa.append(a)
+    return {'labels':labels,'hadir':hadir,'alfa':alfa}
+
+def _course_att_stats(iid):
+    cs=[]
+    for c in Course.query.filter_by(institution_id=iid,is_active=True).limit(10).all():
+        total=Attendance.query.filter_by(course_id=c.id).count()
+        pres =Attendance.query.filter_by(course_id=c.id,status='hadir').count()
+        cs.append({'course':c,'rate':round(pres/total*100,1) if total else 0,'total':total})
+    return sorted(cs,key=lambda x:x['rate'])
+
+def _monthly_trend(iid):
+    res=[]
+    for i in range(5,-1,-1):
+        md=date.today().replace(day=1)-timedelta(days=i*30)
+        ms=md.replace(day=1)
+        cnt=User.query.filter(User.institution_id==iid,User.role=='student',
+            User.created_at>=ms).count()
+        res.append({'month':md.strftime('%b %Y'),'new_students':cnt})
+    return res
+
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        ensure_schema()
+        print("✅ Tables created/verified. Running OmniClass...")
+    app.run(debug=True, host='0.0.0.0', port=5000)
+else:
+    try:
+        with app.app_context():
+            try:
+                db.create_all()
+            except Exception as ex:
+                msg = str(ex)
+                if '1813' in msg and 'DISCARD the tablespace' in msg:
+                    # Jangan crash saat aplikasi start; schema check & app tetap bisa jalan.
+                    print(f"⚠️  db.create_all() gagal karena tablespace (1813), skip init sementara: {msg}")
+                else:
+                    raise
+            ensure_schema()
+    except Exception as _e:
+        print(f"⚠️  Startup schema init skipped: {_e}")
 
